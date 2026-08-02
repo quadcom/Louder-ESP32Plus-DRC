@@ -283,7 +283,8 @@ bool Tas58xxComponent::apply_drc_crossover_() {
     return false;
   }
 
-  ESP_LOGD(TAG, "Set DRC crossover: %.0fHz / %.0fHz LR4 at %uHz", low_hz, high_hz, fs);
+  ESP_LOGD(TAG, "Set DRC crossover: %.0fHz / %.0fHz LR4 at %uHz", low_hz, high_hz,
+           static_cast<unsigned>(fs));
   return true;
 }
 
@@ -349,7 +350,7 @@ void Tas58xxComponent::log_drc_registers() {
                              (static_cast<uint32_t>(raw[2]) << 8) | raw[3];
 
       ESP_LOGI(TAG, "  %-4s %-6s p%02X/%02X = 0x%08X", DRC_BAND_TEXT[i], NAMES[f],
-               fields[f].page, fields[f].sub_addr, value);
+               fields[f].page, fields[f].sub_addr, static_cast<unsigned>(value));
     }
   }
 }

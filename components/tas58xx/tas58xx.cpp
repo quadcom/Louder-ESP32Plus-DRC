@@ -285,13 +285,13 @@ void Tas58xxComponent::dump_config() {
                 "  DRC Energy Window: %.2fms\n"
                 "  DRC DSP Rate: %uHz",
                 this->drc_crossover_low_hz_, this->drc_crossover_high_hz_,
-                this->drc_energy_ms_, this->drc_dsp_rate_);
+                this->drc_energy_ms_, static_cast<unsigned>(this->drc_dsp_rate_));
       } else {
         ESP_LOGCONFIG(TAG,
                 "  DRC: 1 band, full range\n"
                 "  DRC Energy Window: %.2fms\n"
                 "  DRC DSP Rate: %uHz",
-                this->drc_energy_ms_, this->drc_dsp_rate_);
+                this->drc_energy_ms_, static_cast<unsigned>(this->drc_dsp_rate_));
       }
 #endif
       break;

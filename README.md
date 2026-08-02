@@ -114,16 +114,25 @@ the project root.
 ```
 python tools/drc_math_check.py     # algorithm vs TI documented defaults
 python tools/cpp_check/run.py      # shipping C++ vs the algorithm
-esphome config esphome/louder-esp32-plus-drc-sendspin.yaml
+esphome compile esphome/louder-esp32-plus-drc-sendspin.yaml
 ```
 
 All three pass as committed. The C++ check needs a host compiler —
-`pip install ziglang` provides one.
+`pip install ziglang` provides one. The first `esphome compile` pulls the
+ESP-IDF toolchain, a few GB.
 
-Not yet done: a full firmware compile. The DRC math layer is compiled and
-checked for the host, but `tas58xx_drc.cpp` and the entity classes have only
-been reviewed, not built. `esphome compile` is the next gate and will pull the
-ESP-IDF toolchain (a few GB on first run).
+Firmware builds clean, warning-free, for all of:
+
+| Target | Result |
+| --- | --- |
+| TAS5825M, 1 band, amp only | 779 KB flash / 26.9% RAM |
+| TAS5805M, 3 band | 779 KB flash / 26.9% RAM |
+| TAS5825M, Sendspin (full stack) | 1307 KB flash / 32.6% RAM |
+
+The 5805M target is built purely to exercise the other side of the per-variant
+`#ifdef` — its address tables and the three-band crossover path are otherwise
+never seen by a compiler when building for a Louder Plus. Keep it in the loop
+after touching `tas58xx_drc.h`.
 
 ## Controls
 
@@ -151,9 +160,13 @@ memory map that no shipping code has previously exercised.
 ## Status
 
 Verified statically: every DRC address is from the TI process-flow document for
-that part, and the encoders reproduce every documented default bit-exactly.
+that part, the encoders reproduce every documented default bit-exactly, and the
+firmware compiles warning-free for both variants and both band modes.
 The 5825M DRC coefficient addresses come from the same table that already
 supplies the component's working EQ, volume and mixer addresses.
+
+Nothing here has been run on a board. What compiles and what the amp does with
+the coefficients are different questions, and only the first is settled.
 
 Not yet verified on hardware:
 
