@@ -179,10 +179,19 @@ the saved preference and the DSP all end up agreeing — and since ratio 1:1 is 
 unity gain curve, the result is inert whatever the master switch is doing. The
 switch itself is deliberately left alone.
 
-Three `DRC Low` / `DRC Mid` / `DRC High` text entities act as dividers on the
-device page. Home Assistant has no spacer primitive and sorts each category
-alphabetically, so a header whose name is a strict prefix of its band's controls
-always lands directly above them.
+### Separating the bands in the UI
+
+A Home Assistant **device page** cannot show a divider. It is generated from the
+entity list and has no rule or heading primitive, so any "spacer" has to be a
+real entity — which renders as a greyed-out read-only row and reads worse than
+no separator at all. That was tried and reverted.
+
+Dividers are a dashboard feature. [`docs/ha-dashboard-drc.yaml`](docs/ha-dashboard-drc.yaml)
+is a paste-ready `entities` card using `type: section` rows, each drawing an
+actual labelled horizontal rule above its band. Add it with **Edit dashboard →
+Add card → Manual**. It also drops the repeated band word from each row, since
+the heading already carries it, so the controls read `Threshold` / `Ratio` /
+`Attack` rather than `DRC Low Threshold`.
 
 ### Do not add `on_boot` to a board config
 

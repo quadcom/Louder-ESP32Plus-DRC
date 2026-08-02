@@ -1,0 +1,79 @@
+# Home Assistant dashboard card for the TAS58xx DRC
+# =================================================
+# Draws a real labelled horizontal rule between each band, which the device page
+# cannot do.
+#
+# WHY NOT IN THE ESPHOME CONFIG
+#   A device page is generated from the entity list and has no divider
+#   primitive. Anything added there has to be an entity, so a "spacer" shows up
+#   as a greyed-out read-only row - worse than no separator. Dividers are a
+#   dashboard feature, so they belong in a dashboard.
+#
+# HOW TO USE
+#   Dashboard -> pencil (edit) -> "+ ADD CARD" -> scroll down -> "Manual"
+#   -> replace the contents with everything below the line, then Save.
+#
+# ENTITY IDS
+#   These assume the ESPHome friendly_name is "Speaker", giving
+#   number.speaker_drc_low_threshold and so on. Check yours in
+#   Developer tools -> States, filter on "drc". If your prefix differs, a
+#   find-and-replace of "speaker" is the whole job.
+#
+#   The per-row 'name:' overrides drop the redundant band word, since the
+#   section heading above already says which band it is. Delete them if you
+#   would rather keep the full entity names.
+# ---------------------------------------------------------------------------
+
+type: entities
+title: Speaker - DRC
+show_header_toggle: false
+state_color: true
+entities:
+  - entity: switch.speaker_drc
+    name: DRC enabled
+  - entity: button.speaker_drc_reset_defaults
+    name: Reset all bands to defaults
+  - entity: button.speaker_drc_register_dump
+    name: Register dump (log, read-only)
+
+  - type: section
+    label: Low band
+
+  - entity: number.speaker_drc_low_threshold
+    name: Threshold
+  - entity: number.speaker_drc_low_ratio
+    name: Ratio
+  - entity: number.speaker_drc_low_attack
+    name: Attack
+  - entity: number.speaker_drc_low_release
+    name: Release
+  - entity: number.speaker_drc_low_makeup
+    name: Makeup
+
+  - type: section
+    label: Mid band - inert unless drc_bands is 3
+
+  - entity: number.speaker_drc_mid_threshold
+    name: Threshold
+  - entity: number.speaker_drc_mid_ratio
+    name: Ratio
+  - entity: number.speaker_drc_mid_attack
+    name: Attack
+  - entity: number.speaker_drc_mid_release
+    name: Release
+  - entity: number.speaker_drc_mid_makeup
+    name: Makeup
+
+  - type: section
+    label: High band - inert unless drc_bands is 3
+
+  - entity: number.speaker_drc_high_threshold
+    name: Threshold
+  - entity: number.speaker_drc_high_ratio
+    name: Ratio
+  - entity: number.speaker_drc_high_attack
+    name: Attack
+  - entity: number.speaker_drc_high_release
+    name: Release
+  - entity: number.speaker_drc_high_makeup
+    name: Makeup

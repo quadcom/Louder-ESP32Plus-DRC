@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Check the DRC coefficient encoders against TI's documented defaults.
 
 This mirrors components/tas58xx/tas58xx_helpers.cpp exactly. Every assertion
@@ -63,7 +63,7 @@ def time_constant_to_f1_31(tau_ms, sample_rate):
 
 
 def ratio_to_slope(ratio):
-    """SLOA148 Â§5.2: n:1 compression -> k = 1/n - 1."""
+    """SLOA148 §5.2: n:1 compression -> k = 1/n - 1."""
     if ratio <= 1.0:
         return 0.0
     return max(-0.999, (1.0 / ratio) - 1.0)
@@ -131,7 +131,7 @@ def main():
     print(f"  1 - exp(-1/(fs*tau)) at 100 ms/96 kHz -> 0x{exp_raw:08X}, "
           f"off by {exp_raw - 0x000369D0:+d} from TI's 0x000369D0")
 
-    print("\nRatio to K slope - SLOA148 Â§5.2, k = 1/n - 1")
+    print("\nRatio to K slope - SLOA148 §5.2, k = 1/n - 1")
     for ratio, want_k in [(1.0, 0.0), (2.0, -0.5), (4.0, -0.75), (10.0, -0.9)]:
         got_k = ratio_to_slope(ratio)
         ok = abs(got_k - want_k) < 1e-9
