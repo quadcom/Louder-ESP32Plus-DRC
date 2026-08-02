@@ -5,6 +5,16 @@ Home Assistant entities through ESPHome. Built as a fork of
 `mrtoy-me/esphome-tas58xx`, the component the Sonocotta ESPHome packages already
 use for EQ, volume, mixer and fault reporting.
 
+**Primary target: Louder ESP32-S3 Plus, Sendspin, Ethernet** —
+[`esphome/louder-esp32-s3-plus-drc-sendspin.yaml`](esphome/louder-esp32-s3-plus-drc-sendspin.yaml).
+Fully self-contained, so it can be pasted straight into the ESPHome device code
+window with nothing copied alongside it.
+
+The plain-ESP32 configs are kept and still build. Nothing in the component is
+MCU-specific — the DSP register maps depend on the *amplifier* variant, not on
+which Espressif part drives it — so ESP32 and ESP32-S3 need no separate code
+paths.
+
 ## The part is a TAS5825M, not a TAS5805M
 
 The Louder ESP32 Plus (and Pro) carry a **TAS5825M**; only the plain Louder
@@ -25,10 +35,12 @@ components/tas58xx/          fork of mrtoy-me/esphome-tas58xx, DRC added
   number/drc_number.{h,cpp}  the 15 DRC number entities
   switch/drc_enable_switch.* master DRC enable
 esphome/
-  louder-esp32-plus-drc-sendspin.yaml  Sendspin player + DRC
-  louder-esp32-plus-drc-full.yaml      HA media_player + DRC
-  louder-esp32-plus-drc.yaml           amp only, for `esphome config` checks
-  packages/dac-tas58xx-drc.yaml        DAC + DRC package
+  louder-esp32-s3-plus-drc-sendspin.yaml        PRIMARY - S3, Sendspin, Ethernet,
+                                       self-contained, paste-ready
+  louder-esp32-plus-drc-sendspin.yaml  ESP32, Sendspin, WiFi
+  louder-esp32-plus-drc-full.yaml      ESP32, HA media_player, WiFi
+  louder-esp32-plus-drc.yaml           ESP32, amp only - compile check target
+  packages/dac-tas58xx-drc.yaml        DAC + DRC package, for the ESP32 configs
 docs/tas58xx-drc-reference.md     verified register maps and coefficient math
 tools/drc_math_check.py           checks the math against TI's constants
 tools/cpp_check/run.py            checks the shipping C++ against that math
@@ -44,15 +56,22 @@ packages bind to (`external_dac`, `enable_dac`, `over_temperature_warning`,
 audio, media player or Sendspin, light, IR, monitoring — is untouched and still
 comes from the Sonocotta repo.
 
-Two ready configs, both validated:
+Ready configs, all validated and compiled:
 
-| Config | Player |
-| --- | --- |
-| `esphome/louder-esp32-plus-drc-sendspin.yaml` | Sendspin (multi-room) |
-| `esphome/louder-esp32-plus-drc-full.yaml` | HA `media_player` / speaker |
+| Config | MCU | Player | Net |
+| --- | --- | --- | --- |
+| `louder-esp32-s3-plus-drc-sendspin.yaml` | S3 | Sendspin | Ethernet |
+| `louder-esp32-plus-drc-sendspin.yaml` | ESP32 | Sendspin | WiFi |
+| `louder-esp32-plus-drc-full.yaml` | ESP32 | HA `media_player` | WiFi |
+
+The S3 config inlines the DAC + DRC block instead of including the package,
+because a config pasted into the ESPHome device code window cannot `!include` a
+local file. That also means its DAC substitutions are uncommented with real
+values — those defaults used to live inside the remote `dac-tas58xx.yaml` it
+replaces, and would otherwise be undefined.
 
 `esphome/louder-esp32-plus-drc.yaml` is amp-control-only, with no player. It is
-for `esphome config` checks. **Do not flash it and expect DRC to work** — the
+the fast compile-check target. **Do not flash it and expect DRC to work** — the
 DSP ignores coefficient writes until it has locked to the I²S clock, which is
 why the player packages play a silent FLAC at boot.
 
