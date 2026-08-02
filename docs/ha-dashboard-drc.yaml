@@ -35,6 +35,8 @@ entities:
     name: Reset all bands to defaults
   - entity: button.speaker_drc_register_dump
     name: Register dump (log, read-only)
+  - entity: select.speaker_drc_offset_convention
+    name: Offset convention (diagnostic)
 
   - type: section
     label: Low band

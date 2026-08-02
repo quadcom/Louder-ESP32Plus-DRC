@@ -132,6 +132,13 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
   bool set_drc_enable(bool enable);
   bool drc_enabled() { return this->drc_enabled_; }
 
+  // Which formula produces the two offset registers. Runtime-switchable because
+  // the part's convention is still being established by listening, and a
+  // rebuild-and-flash per hypothesis is a slow way to run that experiment.
+  // Rewrites every band immediately. See DrcOffsetConvention in tas58xx_drc.h.
+  bool set_drc_offset_convention(DrcOffsetConvention convention);
+  DrcOffsetConvention drc_offset_convention() { return this->drc_offset_convention_; }
+
   bool drc_is_three_band() { return this->drc_band_mode_ == DRC_THREE_BAND; }
 
   // Reads the live DRC block back and logs it. Captures a baseline before
@@ -324,6 +331,8 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
    bool drc_enabled_{false};   // master enable; DRC is a no-op out of reset
 
    DrcBandMode drc_band_mode_{DRC_ONE_BAND}; // YAML default = full range, band 1 only
+
+   DrcOffsetConvention drc_offset_convention_{DRC_OFFSET_DEFAULT};
 
    float drc_crossover_low_hz_{300.0f};   // YAML configured, used when three band
    float drc_crossover_high_hz_{3000.0f};

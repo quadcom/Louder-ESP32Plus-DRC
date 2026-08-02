@@ -32,6 +32,48 @@ enum DrcBandMode : uint8_t {
   DRC_THREE_BAND  = 1,
 };
 
+// How the two offset registers are derived. Which one the part actually wants
+// is still open; see §3 of docs/tas58xx-drc-reference.md for the evidence so
+// far. Runtime-switchable so all three can be compared by ear on one track,
+// rather than one rebuild-and-flash per hypothesis.
+//
+// x is the detector level in dBFS, T1 the knee, T2 pinned at -1 dBFS, and
+// k = 1/ratio - 1, so k is negative for compression.
+enum DrcOffsetConvention : uint8_t {
+  // gain = k*x + O, thresholds only selecting the region, so the offset is the
+  // line's y-intercept and is what places the knee at T1. Best fit to the
+  // evidence: with every offset zero, ratio 2 made the output LOUDER, which
+  // k*(x - T1) cannot do.
+  //   region 1  gain = 0
+  //   region 2  gain = k*x + O1,  O1 = -k*T1   -> 0 dB at T1
+  //   region 3  gain = k*x + O2,  O2 = -k*T1   -> same line, continuous
+  DRC_OFFSET_INTERCEPT = 0,
+
+  // Both offsets at their documented reset value. Transparent below T1 only if
+  // the part subtracts the threshold itself. Ruled out by the loudness result
+  // above, kept because it is the cleanest reference point: the only things it
+  // moves away from reset are the slopes and thresholds.
+  DRC_OFFSET_ZERO = 1,
+
+  // The original reading of SLOA148 - an offset is the gain curve's value AT
+  // its threshold, so region 2 starts at zero and region 3 picks up where
+  // region 2 left off:
+  //   O1 = 0,  O2 = k*(T2 - T1)
+  // Behaves as a constant attenuation on the bench, which is why it is here for
+  // comparison rather than in use.
+  DRC_OFFSET_CONTINUITY = 2,
+};
+
+static constexpr uint8_t NUMBER_DRC_OFFSET_CONVENTIONS = 3;
+
+// Order matches the enum, and the strings match the select entity's options in
+// the YAML - keep all three in step.
+static constexpr const char* DRC_OFFSET_CONVENTION_TEXT[NUMBER_DRC_OFFSET_CONVENTIONS] = {
+  "Intercept", "Zero", "Continuity",
+};
+
+static constexpr DrcOffsetConvention DRC_OFFSET_DEFAULT = DRC_OFFSET_INTERCEPT;
+
 // One 32-bit DSP coefficient location within a book.
 struct DrcAddress {
   uint8_t page;

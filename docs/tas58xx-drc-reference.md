@@ -207,7 +207,7 @@ illustration, where output *falls* 3 dB per dB of input rise).
 
 K is the slope of the **gain-adjustment** curve, not an input-vs-output curve.
 
-### Offsets and region continuity — **write zero to both**
+### Offsets — **the part does not subtract the threshold**
 
 SLOA148: "Offsets O1 and O2 define, in dB, the attenuation (cut) or gain (boost)
 applied by the DRC-derived gain coefficient at the threshold points T1 and T2."
@@ -229,25 +229,69 @@ of a constant offset, not of a gain curve. The arithmetic closes:
 off2 = k * (T2 - T1) = -0.5 * (-1 - -20) = -9.5 dB
 ```
 
-The conclusion is that the part applies an offset outside the region it is named
-for, and handles continuity between regions itself. **`apply_drc_band_` now
-writes zero to both offsets**, which is also their documented reset value — so
-the slopes and thresholds are the only things it moves away from a
-known-transparent state.
+**Zero is wrong too, and that identified the real convention.** Writing zero to
+both offsets and going back to threshold −20 dB / ratio 2:1 / makeup 0 dB made
+the output **louder**, not quieter — confirmed against a fresh reset, with the
+ratio as the only variable.
 
-What an offset is actually *for* is still unknown. A whole-curve gain trim is the
-obvious guess, and it is redundant with the band mixer gain we already use for
-makeup, so there is no reason to touch it.
+That is decisive, because with zero offsets the only remaining term is the
+region slope, and `k · (x − T1)` cannot be positive above the threshold: k is
+negative for compression and `(x − T1)` is positive. A boost is only possible if
+the part never subtracts the threshold at all. So the region equation is
 
-Two things this does **not** establish, both still open:
+```
+gain = K · x + O
+```
 
-- Whether the region 2 → region 3 join is smooth. Both regions get the same
-  slope, so any step can only appear at T2 = −1 dBFS and can only be a dB or
-  two — inaudible, and not worth chasing without a scope.
-- Whether the *amount* of compression is right, i.e. the K-slope ↔ ratio
-  mapping. Confirming that needs a level sweep against measured gain reduction.
-  With offsets at zero the curve at least starts from a transparent state, so an
-  error here can no longer masquerade as a constant loss.
+with T1 and T2 doing nothing but selecting which region's K and O to use. **The
+offsets are y-intercepts**, and they are what places the knee. That also
+explains why the registers exist: under the "value at the threshold" reading a
+single-knee compressor would leave both at zero permanently, which is not a
+register TI would provide.
+
+For a compressor that is unity below T1 and slope k above it, with regions 2 and
+3 sharing that slope:
+
+```
+O1 = O2 = -k · T1        threshold -20, ratio 2  ->  -10 dB
+```
+
+| region | condition | gain |
+|---|---|---|
+| 1 | x < T1 | `K0 · x` = 0 |
+| 2 | T1 ≤ x < T2 | `k · x - k · T1` → 0 dB at T1 |
+| 3 | x ≥ T2 | same line, so continuous through T2 |
+
+**All three conventions are runtime-selectable** via the `DRC Offset Convention`
+select entity (`DrcOffsetConvention` in `tas58xx_drc.h`), because settling this
+by ear one rebuild at a time was costing a flash cycle per hypothesis. Intercept
+is the default.
+
+One loose end. The intercept model predicts region 1 is flat regardless of the
+offsets, so it does **not** explain the original quiet-piano loss — under
+`O1 = 0, O2 = −9.5` a signal below the knee should have been untouched. Either
+that track's RMS was higher than it sounded and it was sitting in region 2, or
+region 1 picks up an offset as well. The distinguishing test is below; if
+Intercept leaves quiet material transparent, the question is moot.
+
+Still open: the **K-slope ↔ ratio mapping**. `k = 1/ratio − 1` is from SLOA148
+and matches the documented defaults, but no measurement confirms the *amount* of
+compression on this part. That needs a level sweep against measured gain
+reduction.
+
+#### Test procedure
+
+`drc_bands: 1`, threshold −20 dB, ratio 2:1, makeup 0 dB, and material whose RMS
+sits below −20 dBFS — quiet solo piano is ideal. A compressor is required to do
+nothing at all there, so:
+
+| convention | quiet material | predicted |
+|---|---|---|
+| Intercept | unchanged | correct |
+| Zero | louder | boost of `−k · x`, about +7 dB at −15 dBFS |
+| Continuity | quieter | constant cut of `k · (T2 − T1)`, −9.5 dB |
+
+Then confirm on loud material: peaks should pull down a few dB and nothing else.
 
 ---
 

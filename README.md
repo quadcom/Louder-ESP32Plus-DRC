@@ -243,30 +243,34 @@ Verified on hardware — Louder ESP32-S3 Plus, TAS5825M, 2026-08-02:
   (`p07/78` and `p08/78`), whose tails landed correctly on the following page.
   The metadata block at `p09/28` and the DRC parameter block on page 0x07 were
   both left intact, so nothing overran.
-- **The offsets must be zero.** Found by listening, not by readback. The first
-  version wrote `off2 = k·(T2 − T1)` so that region 3 continued the region 2
-  line, which is the natural reading of SLOA148. On the board it behaves as a
-  constant attenuation instead: at threshold −20 dB and ratio 2:1 a quiet piano
-  track, RMS far below the knee and so untouchable by any correct compressor,
-  lost about 10 dB — matching `−0.5 · (−1 − −20) = −9.5 dB`. Raising the
-  threshold to −7 dB restored most of it, so the loss followed the threshold
-  rather than the signal level. Both offsets are now written as zero, which is
-  their documented reset value. See §3 of the reference doc.
+- **The part does not subtract the threshold.** Found by listening, not by
+  readback. Writing zero to both offsets — their documented reset value — and
+  going back to threshold −20 dB / ratio 2:1 / makeup 0 dB made the output
+  **louder**. With zero offsets the only remaining term is the region slope, and
+  `k·(x − T1)` cannot be positive above the threshold, so the part is computing
+  `gain = K·x + O` with the thresholds doing nothing but selecting a region.
+  **The offsets are y-intercepts**, and they are what places the knee:
+  `O1 = O2 = −k·T1`. That also explains why the registers exist at all — under
+  the "value at the threshold" reading, a single-knee compressor would leave
+  both at zero forever.
 
-That establishes what the amp *stores*, and one thing about what it *does* with
-it. The remaining item needs an audio measurement, not a register dump.
+  The first attempt wrote `off2 = k·(T2 − T1)`, the natural reading of SLOA148,
+  and behaved as a constant −9.5 dB cut. See §3 of the reference doc for both
+  results and the test that separates the three candidate conventions.
+
+That establishes what the amp *stores*, and the shape of what it *does* with it.
+The remaining item needs an audio measurement, not a register dump.
 
 Not yet verified on hardware:
 
 1. **The K-slope ↔ compression-ratio mapping.** `k = 1/ratio − 1` comes from
    SLOA148 §5.2 and is consistent with the documented defaults, but no
-   measurement confirms it on this part. Sweep input level, measure gain
-   reduction, compare against the requested ratio. With the offsets at zero the
-   curve at least starts transparent, so an error here can no longer show up as
-   a constant loss.
-2. ~~**The offset continuity convention.**~~ **Resolved 2026-08-02 — the
-   offsets are not what SLOA148's wording suggests. Both are written as zero.**
-   See the hardware-verified list above.
+   measurement confirms the *amount* of compression on this part. Sweep input
+   level, measure gain reduction, compare against the requested ratio.
+2. ~~**The offset continuity convention.**~~ **Superseded 2026-08-02 — offsets
+   are y-intercepts, not curve values at the thresholds.** All three candidate
+   formulas are runtime-selectable through the **DRC Offset Convention** entity
+   so they can be compared by ear; `Intercept` is the default.
 3. ~~**The 5825M crossover addresses.**~~ **Resolved 2026-08-02 — confirmed
    correct by readback on hardware.** See "What the readback found" below.
 
