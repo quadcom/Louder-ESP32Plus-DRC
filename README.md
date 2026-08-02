@@ -185,11 +185,21 @@ firmware compiles warning-free for both variants and both band modes.
 The 5825M DRC coefficient addresses come from the same table that already
 supplies the component's working EQ, volume and mixer addresses.
 
-Verified on hardware (Louder ESP32-S3 Plus, TAS5825M, 2026-08-02): the one-band
-DRC write path. Every coefficient reads back at the address and in the format
-the code intends, at `drc_bands: 1` — thresholds and slopes in 9.23, time
-constants in 1.31, `off2 = k·(T2 − T1)`, band 1 mixer at unity with bands 2 and
-3 muted. The crossover addresses are confirmed by readback.
+Verified on hardware — Louder ESP32-S3 Plus, TAS5825M, 2026-08-02:
+
+- **One-band write path.** Every coefficient reads back at the address and in
+  the format the code intends: thresholds and slopes in 9.23, time constants in
+  1.31, `off2 = k·(T2 − T1)`, band 1 mixer carrying makeup gain with bands 2 and
+  3 held muted. Checked with a distinct fingerprint per band — thresholds −6 /
+  −30 / −48 dB, ratios 2 / 4 / 8, attacks 1 / 20 / 200 ms, releases 100 / 500 /
+  2000 ms — so all three address maps are confirmed independent and correct.
+  33 of 33 fields matched, two of them ±1 LSB of float rounding.
+- **Three-band crossover write path.** At `drc_bands: 3` with 300 Hz / 3000 Hz
+  corners at 96 kHz, all **forty** coefficient words match
+  `tools/drc_math_check.py` exactly. That includes both page-straddling writes
+  (`p07/78` and `p08/78`), whose tails landed correctly on the following page.
+  The metadata block at `p09/28` and the DRC parameter block on page 0x07 were
+  both left intact, so nothing overran.
 
 That establishes what the amp *stores*, not what it *does* with it. The
 remaining items need an audio measurement, not a register dump.

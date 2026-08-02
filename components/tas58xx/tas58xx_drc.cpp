@@ -361,11 +361,16 @@ void Tas58xxComponent::log_drc_registers() {
 
 //// Crossover region sweep
 //
-// Exists because the TAS5825M crossover addresses are reconstructed and
-// suspected wrong - see the comment on DRC_XOVER_* in tas58xx_drc.h. Out of
-// reset every crossover biquad is a pass-through, which has an unmistakable
-// signature: one non-zero word followed by four zeros. Finding those signatures
-// locates the real blocks without writing anything.
+// Written to locate the TAS5825M crossover addresses, which were reconstructed
+// and once suspected wrong. It confirmed them instead - see the comment on
+// DRC_XOVER_* in tas58xx_drc.h. Out of reset every crossover biquad is a
+// pass-through, which has an unmistakable signature: one non-zero word followed
+// by four zeros. Finding those signatures locates the blocks without writing
+// anything.
+//
+// Still worth running on a new board or after changing the address tables. In
+// three band mode it doubles as a write check: the eight addresses must have
+// stopped being pass-throughs.
 
 // Which flat slot a (page, sub_addr) maps to, or -1 if outside the swept range.
 static int32_t drc_scan_slot_of(uint8_t page, uint8_t sub_addr) {
@@ -475,10 +480,22 @@ void Tas58xxComponent::log_drc_crossover_scan_() {
     found++;
   }
 
+  // What counts as healthy inverts with the mode: at reset the crossover IS the
+  // pass-throughs, once programmed it must not be.
+  const bool three_band = this->drc_is_three_band();
+
   if (found == 0) {
-    ESP_LOGW(TAG, "    none - crossover may be outside the swept pages, or already programmed");
+    if (three_band) {
+      ESP_LOGI(TAG, "    none - correct, three band mode has programmed the crossover");
+    } else {
+      ESP_LOGW(TAG, "    none - crossover may be outside the swept pages, or already programmed");
+    }
+  } else if (three_band) {
+    ESP_LOGI(TAG, "    %d candidate(s), all from unrelated banks - the crossover is programmed",
+             found);
   } else {
-    ESP_LOGI(TAG, "    %d candidate(s). Eight are expected while the crossover is at reset.", found);
+    ESP_LOGI(TAG, "    %d candidate(s). Eight CONTIGUOUS ones are the crossover at reset; any "
+                  "others belong to unrelated banks.", found);
   }
 
   //// verdict on the configured addresses
@@ -519,9 +536,25 @@ void Tas58xxComponent::log_drc_crossover_scan_() {
                              !word_at(slot + 4);
       const bool passthrough = (b0 != 0) && tail_zero;
 
-      ESP_LOGI(TAG, "    %s BQ%d p%02X/%02X B0=0x%08X %s", group.label, i + 1, address.page,
-               address.sub_addr, static_cast<unsigned>(b0),
-               passthrough ? "= pass-through, address plausible" : "NOT pass-through - suspect");
+      // In three band mode a surviving pass-through means the write never
+      // landed; at reset the opposite is the surprise.
+      const bool unexpected = three_band ? passthrough : !passthrough;
+      const char* verdict;
+      if (three_band) {
+        verdict = passthrough ? "still pass-through - CROSSOVER WRITE DID NOT LAND"
+                              : "= programmed";
+      } else {
+        verdict = passthrough ? "= pass-through, as expected at reset"
+                              : "not pass-through - unexpected in one band mode";
+      }
+
+      if (unexpected) {
+        ESP_LOGW(TAG, "    %s BQ%d p%02X/%02X B0=0x%08X %s", group.label, i + 1, address.page,
+                 address.sub_addr, static_cast<unsigned>(b0), verdict);
+      } else {
+        ESP_LOGI(TAG, "    %s BQ%d p%02X/%02X B0=0x%08X %s", group.label, i + 1, address.page,
+                 address.sub_addr, static_cast<unsigned>(b0), verdict);
+      }
     }
   }
 }
