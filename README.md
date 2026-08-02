@@ -172,9 +172,10 @@ exactly as out of reset. Only the `drc_low_*` controls do anything.
 `drc_bands: 3` programs the crossover from `drc_crossover_low` /
 `drc_crossover_high` (4th-order Linkwitz-Riley) and sums all three bands.
 
-Start with one band. It is the safe configuration, it validates the coefficient
-math on real hardware, and the crossover addresses are the one part of the
-memory map that no shipping code has previously exercised.
+Start with one band. It is the safe configuration and it validates the
+coefficient math on real hardware. The crossover addresses are now confirmed
+(see below), so three-band is defensible — but the crossover write path itself
+still has no hardware run behind it.
 
 ## Status
 
@@ -184,8 +185,14 @@ firmware compiles warning-free for both variants and both band modes.
 The 5825M DRC coefficient addresses come from the same table that already
 supplies the component's working EQ, volume and mixer addresses.
 
-Nothing here has been run on a board. What compiles and what the amp does with
-the coefficients are different questions, and only the first is settled.
+Verified on hardware (Louder ESP32-S3 Plus, TAS5825M, 2026-08-02): the one-band
+DRC write path. Every coefficient reads back at the address and in the format
+the code intends, at `drc_bands: 1` — thresholds and slopes in 9.23, time
+constants in 1.31, `off2 = k·(T2 − T1)`, band 1 mixer at unity with bands 2 and
+3 muted. The crossover addresses are confirmed by readback.
+
+That establishes what the amp *stores*, not what it *does* with it. The
+remaining items need an audio measurement, not a register dump.
 
 Not yet verified on hardware:
 
@@ -196,17 +203,8 @@ Not yet verified on hardware:
 2. **The offset continuity convention.** `off1 = 0`, `off2 = k·(T2 − T1)` is
    derived from SLOA148's description of offsets as the curve value at each
    threshold. If region 2 and 3 turn out to be discontinuous, this is why.
-3. **The 5825M crossover addresses — believed wrong, not merely unconfirmed.**
-   Reconstructed from the offset sequence because SLAA786A's page column is
-   mis-transcribed in that section. They fail the strongest available
-   cross-check: every proven TAS5825M biquad address sits on the grid
-   `0x08 + n*0x14` within a page (six per page, the last ending exactly at
-   `0x7F`, never crossing a page), and none of the reconstructed offsets do.
-   Two of them would straddle a page boundary, which the TAS5825M's own layout
-   never does. See the comment on `DRC_XOVER_*` in `tas58xx_drc.h`.
-
-   Only `drc_bands: 3` writes them. Leave it at `1` until they are read back and
-   re-derived — the **DRC Register Dump** button does the reading, see below.
+3. ~~**The 5825M crossover addresses.**~~ **Resolved 2026-08-02 — confirmed
+   correct by readback on hardware.** See "What the readback found" below.
 
 ### Locating the real crossover addresses
 
@@ -230,13 +228,33 @@ It sweeps book `0xAA` across the crossover pages and prints:
 3. **A verdict per configured address**, marking each of the eight
    `DRC_XOVER_*` entries `address plausible` or `NOT pass-through - suspect`.
 
-Expect **eight** candidates while the crossover is at reset. Then:
+Expect **eight contiguous** candidates while the crossover is at reset. Others
+may appear from unrelated filter banks in the same pages; contiguity and the
+bounds either side are what identify the crossover, not the raw count.
 
-| What you see | What it means |
-| --- | --- |
-| Candidates land on the configured addresses | the alignment concern was unfounded; three-band is safe to try |
-| Candidates land on `0x08 + n*0x14` instead | those are the real addresses — correct the table |
-| No candidates | the crossover is not in the swept pages; the reference doc is wrong |
+### What the readback found
+
+Run on a Louder ESP32-S3 Plus, 2026-08-02. **The configured addresses are
+correct.** All eight read back as unity 5.27 pass-throughs forming one
+contiguous bank at `p07/78 + n*0x14`, bounded before by non-biquad data at
+`p07/64`–`0x74` and after by a metadata block at `p09/28`
+(`02DEAD00 74013901 0020C49B`). Eight is exactly a 3-band LR4 split: 2 low,
+4 mid, 2 high. Three further candidates at `p09/34`, `p09/48`, `p09/5C` sit on
+the far side of that metadata block and belong to a different bank.
+
+The objection that condemned these addresses was right on the fact and wrong on
+the conclusion. They are *not* on the EQ grid, and two of them *do* straddle a
+page. But the crossover bank simply uses a different alignment from the EQ bank
+on this part: the EQ-grid slots `p08/08`, `p08/1C` and `p08/30` all read
+`0x00000000`, a null biquad rather than a pass-through. Straddling is handled —
+`book_and_page_write_` splits at the boundary and resumes at the next page's
+`0x08`, the path it already takes for the TAS5805M.
+
+One incidental finding: **books `0x8C` and `0xAA` alias** on this part (or book
+select is a no-op for these DSP pages). The sweep reads book `0xAA` `p07/08`
+and gets back exactly what the DRC block wrote via book `0x8C`. Harmless, since
+reads and writes are paired consistently, but it means the DRC parameters and
+the crossover bank share one address space. They do not overlap.
 
 ### What the risk actually is
 
@@ -249,13 +267,16 @@ helper always restores book 0 / page 0. (Register `0x7F` is book-select, and a
 page 0, which is why the helper sets page←0 before book. Upstream's working EQ
 writes `0x7F` routinely.)
 
-The exposure is your **speakers**, two ways:
+The exposure is your **speakers**. The larger of the two original concerns is
+now closed: the misaligned-write scenario — splicing the tail of one biquad onto
+the head of another, producing poles outside the unit circle and an unstable
+biquad that self-oscillates to full scale — depended on the addresses being
+wrong, and the readback shows they are not.
 
-- A straddling or misaligned write can splice the tail of one biquad onto the
-  head of another. That is not a coherent filter and its poles may sit outside
-  the unit circle; an unstable IIR biquad self-oscillates to full scale.
-- If the crossover does not land while bands 2 and 3 are unmuted, three copies
-  of the full-range signal sum — about **+9.5 dB** — into hard clipping.
+What remains is ordinary misuse: if a crossover corner is set nonsensically
+while bands 2 and 3 are unmuted, the three bands still sum, and overlapping
+bands mean a level rise — up to about **+9.5 dB** if all three pass the same
+full-range content.
 
 The amp's DC-offset, overcurrent and thermal protections guard the amp, not a
 loudspeaker fed a full-scale tone. First three-band test: low volume, speakers

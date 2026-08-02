@@ -134,29 +134,44 @@ static constexpr DrcBandAddresses DRC_ADDRESS[NUMBER_DRC_BANDS] = {
     {0x07, 0x5C}, {0x07, 0x60} },
 };
 
-// !! SUSPECT - DO NOT USE WITHOUT READBACK. Only reached when drc_bands: 3.
+// CONFIRMED BY READBACK - Louder ESP32-S3 Plus, TAS5825M, 2026-08-02.
+// Only reached when drc_bands: 3.
 //
-// Memory order here is low, HIGH, mid. Addresses reconstructed from the offset
-// sequence because SLAA786A's page column is mis-transcribed in this section;
-// see the reference doc.
+// Memory order here is low, HIGH, mid. Addresses were reconstructed from the
+// offset sequence because SLAA786A's page column is mis-transcribed in this
+// section; see the reference doc. They were previously flagged as probably
+// wrong. The DRC Register Dump sweep disproved that:
 //
-// These fail the strongest cross-check available. Every PROVEN TAS5825M biquad
-// address in tas58xx_eq_common.h sits on the grid 0x08 + n*0x14 within a page -
-// 0x08, 0x1c, 0x30, 0x44, 0x58, 0x6c - six per page, the sixth ending exactly at
-// 0x7F, never crossing a page. book_and_page_write_ says as much: "as is
-// required for tas5805m while tas5825m has biquads aligned to page boundaries".
+//   - All eight read back as unity pass-through biquads out of reset:
+//     B0 = 0x08000000 (unity in 5.27), B1/B2/A1/A2 = 0.
+//   - They form ONE contiguous bank, p07/78 + n*0x14 for n = 0..7, with nothing
+//     interleaved. Eight biquads is exactly what a 3-band LR4 split needs:
+//     2 low + 4 mid + 2 high.
+//   - The bank is bounded at both ends. Before it, p07/64..0x74 holds
+//     non-biquad data (00800000 00800000 3FFFFFFF 3FFFFFFF 3FFFFFFF). After it,
+//     p09/14 + 0x14 lands exactly on a metadata block at p09/28
+//     (02DEAD00 74013901 0020C49B). The bank cannot extend in either direction.
 //
-// Not one of the offsets below is on that grid, and {0x07,0x78} and {0x08,0x78}
-// would each straddle a page boundary. That is the 0x18 + n*0x14 continuous
-// packing the TAS5805M uses, so it looks like 5805M packing was applied to a
-// 5825M while reconstructing.
+// The earlier objection was that these are not on the EQ grid, and it was right
+// about the fact but wrong about the conclusion. EQ biquads sit on 0x08 + n*0x14,
+// six per page, the sixth ending exactly at 0x7F and never crossing a page. The
+// crossover sits on 0x14 + n*0x14, so {0x07,0x78} and {0x08,0x78} each straddle a
+// page. The readback settles which grid is real: p08/08, p08/1C and p08/30 - the
+// EQ-grid slots - all read 0x00000000. That is a null biquad, not a pass-through.
+// So the two banks genuinely use different alignments on this part, and
+// "tas5825m has biquads aligned to page boundaries" in book_and_page_write_ holds
+// for the EQ only.
 //
-// Why it matters beyond a wrong filter: a straddling write lands 8 bytes at
-// 0x78..0x7F and 12 at the next page's 0x08..0x13, so it can overwrite the tail
-// of one biquad and the head of another. The result is not a coherent filter and
-// may have poles outside the unit circle - an unstable biquad self-oscillates to
-// full scale, which will destroy tweeters. Read these locations back and
-// re-derive against the grid before enabling three-band mode.
+// Straddling is safe here: book_and_page_write_ splits a 20-byte write at the
+// page boundary and resumes at the next page's 0x08 - the path it already takes
+// for the TAS5805M. See tas58xx.cpp:955.
+//
+// Books 0x8C and 0xAA alias on this part, or book select is a no-op for these
+// DSP pages: the sweep reads book 0xAA p07/08..0x1C and gets back exactly what
+// was written to book 0x8C via DRC_ADDRESS. Harmless, because every read and
+// write pair uses one book consistently - but it means the DRC parameter block
+// and this crossover bank share one address space. They do not overlap: the DRC
+// block ends at p07/60 and the crossover starts at p07/78.
 static constexpr DrcBiquadAddress DRC_XOVER_LOW[DRC_XOVER_LOW_SECTIONS]   = { {0x07, 0x78}, {0x08, 0x14} };
 static constexpr DrcBiquadAddress DRC_XOVER_HIGH[DRC_XOVER_HIGH_SECTIONS] = { {0x08, 0x28}, {0x08, 0x3C} };
 static constexpr DrcBiquadAddress DRC_XOVER_MID[DRC_XOVER_MID_SECTIONS]   = { {0x08, 0x50}, {0x08, 0x64},
@@ -165,8 +180,10 @@ static constexpr DrcBiquadAddress DRC_XOVER_MID[DRC_XOVER_MID_SECTIONS]   = { {0
 // TAS5825M crossover biquads are 5.27 throughout, like its EQ biquads.
 static constexpr bool DRC_XOVER_MIXED_FORMAT = false;
 
-// Diagnostic sweep range - covers every page the crossover tables above name,
-// which is also the region the addresses are suspected of being wrong within.
+// Diagnostic sweep range - covers every page the crossover tables above name.
+// Kept after those addresses were confirmed: it is still the quickest way to
+// see what the DSP actually holds, and it re-verifies the bank on any board
+// before three-band mode writes to it.
 static constexpr uint8_t DRC_SCAN_PAGE_FIRST = 0x07;
 static constexpr uint8_t DRC_SCAN_PAGE_COUNT = 3;   // 0x07 .. 0x09
 
