@@ -177,10 +177,40 @@ Not yet verified on hardware:
 2. **The offset continuity convention.** `off1 = 0`, `off2 = k·(T2 − T1)` is
    derived from SLOA148's description of offsets as the curve value at each
    threshold. If region 2 and 3 turn out to be discontinuous, this is why.
-3. **The 5825M crossover addresses.** Reconstructed from the offset sequence
-   because SLAA786A's page column is mis-transcribed in that section. Read them
-   back before trusting them — hit the `DRC Register Dump` button, which logs
-   the live block.
+3. **The 5825M crossover addresses — believed wrong, not merely unconfirmed.**
+   Reconstructed from the offset sequence because SLAA786A's page column is
+   mis-transcribed in that section. They fail the strongest available
+   cross-check: every proven TAS5825M biquad address sits on the grid
+   `0x08 + n*0x14` within a page (six per page, the last ending exactly at
+   `0x7F`, never crossing a page), and none of the reconstructed offsets do.
+   Two of them would straddle a page boundary, which the TAS5825M's own layout
+   never does. See the comment on `DRC_XOVER_*` in `tas58xx_drc.h`.
+
+   Only `drc_bands: 3` writes them. Leave it at `1` until they are read back and
+   re-derived.
+
+### What the risk actually is
+
+Not chip damage and not bricking — these are volatile DSP coefficient RAM
+writes, reloaded from the ESP32 on every boot, so a power cycle is a guaranteed
+clean reset. They also cannot reach analog gain, modulation or PDN, which live in
+book `0x00`; the crossover writes are confined to book `0xAA` and the write
+helper always restores book 0 / page 0. (Register `0x7F` is book-select, and a
+20-byte biquad write does reach it — that is safe, because book only changes from
+page 0, which is why the helper sets page←0 before book. Upstream's working EQ
+writes `0x7F` routinely.)
+
+The exposure is your **speakers**, two ways:
+
+- A straddling or misaligned write can splice the tail of one biquad onto the
+  head of another. That is not a coherent filter and its poles may sit outside
+  the unit circle; an unstable IIR biquad self-oscillates to full scale.
+- If the crossover does not land while bands 2 and 3 are unmuted, three copies
+  of the full-range signal sum — about **+9.5 dB** — into hard clipping.
+
+The amp's DC-offset, overcurrent and thermal protections guard the amp, not a
+loudspeaker fed a full-scale tone. First three-band test: low volume, speakers
+you can afford to lose.
 
 Suggested first hardware session: flash with `drc_bands: 1`, press **DRC
 Register Dump** to capture a baseline, enable the DRC switch with ratio 4:1 and

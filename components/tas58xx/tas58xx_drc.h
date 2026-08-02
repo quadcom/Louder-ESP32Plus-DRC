@@ -130,10 +130,29 @@ static constexpr DrcBandAddresses DRC_ADDRESS[NUMBER_DRC_BANDS] = {
     {0x07, 0x5C}, {0x07, 0x60} },
 };
 
+// !! SUSPECT - DO NOT USE WITHOUT READBACK. Only reached when drc_bands: 3.
+//
 // Memory order here is low, HIGH, mid. Addresses reconstructed from the offset
 // sequence because SLAA786A's page column is mis-transcribed in this section;
-// see the reference doc. low BQ1 and mid BQ3 each wrap a page mid-biquad, which
-// book_and_page_write_ handles.
+// see the reference doc.
+//
+// These fail the strongest cross-check available. Every PROVEN TAS5825M biquad
+// address in tas58xx_eq_common.h sits on the grid 0x08 + n*0x14 within a page -
+// 0x08, 0x1c, 0x30, 0x44, 0x58, 0x6c - six per page, the sixth ending exactly at
+// 0x7F, never crossing a page. book_and_page_write_ says as much: "as is
+// required for tas5805m while tas5825m has biquads aligned to page boundaries".
+//
+// Not one of the offsets below is on that grid, and {0x07,0x78} and {0x08,0x78}
+// would each straddle a page boundary. That is the 0x18 + n*0x14 continuous
+// packing the TAS5805M uses, so it looks like 5805M packing was applied to a
+// 5825M while reconstructing.
+//
+// Why it matters beyond a wrong filter: a straddling write lands 8 bytes at
+// 0x78..0x7F and 12 at the next page's 0x08..0x13, so it can overwrite the tail
+// of one biquad and the head of another. The result is not a coherent filter and
+// may have poles outside the unit circle - an unstable biquad self-oscillates to
+// full scale, which will destroy tweeters. Read these locations back and
+// re-derive against the grid before enabling three-band mode.
 static constexpr DrcBiquadAddress DRC_XOVER_LOW[DRC_XOVER_LOW_SECTIONS]   = { {0x07, 0x78}, {0x08, 0x14} };
 static constexpr DrcBiquadAddress DRC_XOVER_HIGH[DRC_XOVER_HIGH_SECTIONS] = { {0x08, 0x28}, {0x08, 0x3C} };
 static constexpr DrcBiquadAddress DRC_XOVER_MID[DRC_XOVER_MID_SECTIONS]   = { {0x08, 0x50}, {0x08, 0x64},
