@@ -173,11 +173,28 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   const float t2_db = DRC_T2_DB;
   const float slope = ratio_to_slope(s.ratio);
 
-  // Offsets are the gain-curve value AT each threshold. Unity below the knee
-  // gives off1 = 0; off2 continues the region 2 line to T2 so the two regions
-  // meet. UNVERIFIED convention - see the reference doc.
+  // Both offsets stay at their documented reset value of zero.
+  //
+  // This used to write off2 = slope * (T2 - T1), reading SLOA148's "the gain
+  // applied at the threshold points" as meaning off2 had to carry the region 2
+  // line up to T2 so region 3 continued it. That was wrong, and audibly so:
+  // with threshold -20dB and ratio 2:1 a quiet piano track - RMS far below the
+  // knee, where a compressor must do nothing at all - lost roughly 10dB. The
+  // loss tracked the threshold, not the signal level, which is the signature of
+  // a constant offset rather than a gain curve. off2 = -0.5 * (-1 - -20)
+  // = -9.5dB accounts for it exactly.
+  //
+  // So the part applies an offset outside the region it is named for, and does
+  // its own continuity between regions. Zero for both is also exactly the reset
+  // state, which leaves the slopes and thresholds as the only things this
+  // function changes from a known-transparent starting point.
+  //
+  // The old continuity value is recomputed inline in the log line below, purely
+  // so the log records what would have been written. Inline rather than a local
+  // because ESP_LOGD compiles away entirely below DEBUG, and a local would then
+  // be an unused variable. Drop it once this has some mileage.
   const float off1_db = 0.0f;
-  const float off2_db = slope * (t2_db - t1_db);
+  const float off2_db = 0.0f;
 
   // Ascending address order, matching how the biquad blocks must be written.
   bool ok = true;
@@ -204,8 +221,10 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
     return false;
   }
 
-  ESP_LOGD(TAG, "Set %s band DRC: %.1fdB %.1f:1 attack %.1fms release %.0fms (k=%.4f off2=%.2fdB)",
-           DRC_BAND_TEXT[band], t1_db, s.ratio, s.attack_ms, s.release_ms, slope, off2_db);
+  ESP_LOGD(TAG, "Set %s band DRC: %.1fdB %.1f:1 attack %.1fms release %.0fms "
+                "(k=%.4f off1=%.2fdB off2=%.2fdB, old convention would be %.2fdB)",
+           DRC_BAND_TEXT[band], t1_db, s.ratio, s.attack_ms, s.release_ms, slope,
+           off1_db, off2_db, slope * (t2_db - t1_db));
   return true;
 }
 

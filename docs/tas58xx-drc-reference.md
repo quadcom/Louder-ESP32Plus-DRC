@@ -207,19 +207,47 @@ illustration, where output *falls* 3 dB per dB of input rise).
 
 K is the slope of the **gain-adjustment** curve, not an input-vs-output curve.
 
-### Offsets and region continuity **[UNVERIFIED]**
+### Offsets and region continuity — **write zero to both**
 
 SLOA148: "Offsets O1 and O2 define, in dB, the attenuation (cut) or gain (boost)
 applied by the DRC-derived gain coefficient at the threshold points T1 and T2."
-So an offset is the value of the gain curve *at* its threshold.
 
-For a single-knee compressor that is unity below the knee, that gives
-`off1 = 0` and, for continuity where region 2 meets region 3,
-`off2 = k1 * (T2 - T1)`. This is consistent with the all-zero defaults being
-flat and continuous, but the exact continuity convention has **not** been
-confirmed on hardware — sweep input level and measure gain reduction before
-trusting it. This is the one item the original handoff also flagged, and it
-remains the open one.
+That reads as "an offset is the value of the gain curve *at* its threshold",
+which for a single-knee compressor unity below the knee gives `off1 = 0` and, so
+that region 3 continues the region 2 line, `off2 = k1 * (T2 - T1)`. It is
+self-consistent, it matches the all-zero defaults being flat, and **it is
+wrong.**
+
+**Disproved on hardware, TAS5825M, 2026-08-02.** With `drc_bands: 1`,
+threshold −20 dB, ratio 2:1, makeup 0 dB, a quiet solo piano track — RMS far
+below the knee, where a compressor is required to do nothing whatsoever — lost
+roughly 10 dB. Raising the threshold to −7 dB brought most of it back. So the
+loss tracked the *threshold*, not the *signal level*, and that is the signature
+of a constant offset, not of a gain curve. The arithmetic closes:
+
+```
+off2 = k * (T2 - T1) = -0.5 * (-1 - -20) = -9.5 dB
+```
+
+The conclusion is that the part applies an offset outside the region it is named
+for, and handles continuity between regions itself. **`apply_drc_band_` now
+writes zero to both offsets**, which is also their documented reset value — so
+the slopes and thresholds are the only things it moves away from a
+known-transparent state.
+
+What an offset is actually *for* is still unknown. A whole-curve gain trim is the
+obvious guess, and it is redundant with the band mixer gain we already use for
+makeup, so there is no reason to touch it.
+
+Two things this does **not** establish, both still open:
+
+- Whether the region 2 → region 3 join is smooth. Both regions get the same
+  slope, so any step can only appear at T2 = −1 dBFS and can only be a dB or
+  two — inaudible, and not worth chasing without a scope.
+- Whether the *amount* of compression is right, i.e. the K-slope ↔ ratio
+  mapping. Confirming that needs a level sweep against measured gain reduction.
+  With offsets at zero the curve at least starts from a transparent state, so an
+  error here can no longer masquerade as a constant loss.
 
 ---
 
