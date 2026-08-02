@@ -50,7 +50,10 @@ substitutions:
 external_components:
   - source: github://quadcom/Louder-ESP32Plus-DRC@${tas58xx_drc_branch}
     components: [tas58xx]
-    refresh: 48h
+    # 0s = re-fetch on every build, so a push reaches the device immediately.
+    # A cache window means silently compiling stale code. Pin
+    # tas58xx_drc_branch to a commit SHA if you want reproducibility instead.
+    refresh: 0s
 
   # Development alternative: build against the working copy instead of the
   # remote, so you can test without pushing first. Comment out the block above

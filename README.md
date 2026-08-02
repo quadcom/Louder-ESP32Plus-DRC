@@ -81,11 +81,20 @@ The component is pulled from this repo, so nothing needs copying:
 external_components:
   - source: github://quadcom/Louder-ESP32Plus-DRC@${tas58xx_drc_branch}
     components: [tas58xx]
-    refresh: 48h
+    refresh: 0s
 ```
 
-Override `tas58xx_drc_branch` in your board YAML to pin a tag or track a
-feature branch. It defaults to `main`.
+Override `tas58xx_drc_branch` in your board YAML to pin a tag, a commit SHA, or
+track a feature branch. It defaults to `main`.
+
+`refresh: 0s` re-fetches on every build. That is deliberate: with a cache window
+a push can take hours to reach the device, and you end up debugging code you are
+not running. This bit during development — a build compiled a stale clone and
+reported four format warnings that had already been fixed, and the only reason
+it was caught was that the warnings named lines whose fix was visible in the
+working copy. The cost is one `git fetch` per build. If you want reproducible
+builds instead, pin `tas58xx_drc_branch` to a commit SHA, which is cached
+separately per ref.
 
 ### Home Assistant add-on / ESPHome Device Builder
 
