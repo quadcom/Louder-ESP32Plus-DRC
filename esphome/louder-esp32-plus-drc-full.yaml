@@ -1,0 +1,148 @@
+# ============================================================
+# Louder-ESP32-Plus - full media player WITH 3-band DRC
+# ============================================================
+# This is the config to actually flash. It is the upstream Sonocotta
+# louder-esp32-plus-idf.yaml with exactly one change: the remote
+# packages/dac-tas58xx.yaml is replaced by the local DRC package
+# packages/dac-tas58xx-drc.yaml. Everything else - audio, media player,
+# light, IR, monitoring - still comes from the Sonocotta repo.
+#
+# Why the full media player matters for DRC: the TAS58xx DSP silently
+# ignores coefficient writes until it has locked to the I2S clock. The
+# media player package plays a silent FLAC on boot for exactly that
+# reason. Without it, EQ, mixer and DRC writes all go nowhere. The
+# sibling louder-esp32-plus-drc.yaml has no media player and is for
+# `esphome config` validation only - do not flash it and expect DRC to
+# work.
+#
+# Before flashing:
+#   1. Put real credentials in secrets.yaml.
+#   2. Set `name` below to your device's name (keep it if you are
+#      replacing an existing device, so HA keeps its entity history).
+#
+#   esphome run esphome/louder-esp32-plus-drc-full.yaml
+# ============================================================
+
+substitutions:
+  name: louder-esp32-plus-drc
+  friendly_name: Louder-ESP32-Plus
+  task_stack_in_psram: "false"
+
+  # ===== Board-Specific Pinouts =====
+  # I2S Audio
+  i2s_lrclk_pin: GPIO25
+  i2s_bclk_pin: GPIO26
+  i2s_dout_pin: GPIO22
+
+  # TAS5825M
+  tas58xx_variant: TAS5825M
+  tas58xx_enable_pin: GPIO33
+  i2c_sda_pin: GPIO21
+  i2c_scl_pin: GPIO27
+
+  # ===== DAC Overrides (optional) =====
+  # tas58xx_dac_mode: PBTL
+  # tas58xx_mixer_mode: MONO
+  # tas58xx_analog_gain: 0db
+  # tas58xx_volume_max: 0dB
+  # tas58xx_volume_min: -60dB
+  # tas58xx_refresh_eq: AUTO
+
+  # ===== DRC =====
+  # Start at one full-range band. Move to "3" only after a register dump
+  # confirms band 1 lands where docs/tas58xx-drc-reference.md says it does.
+  tas58xx_drc_bands: "1"
+  tas58xx_drc_crossover_low: 300Hz
+  tas58xx_drc_crossover_high: 3000Hz
+
+  # RGB LED
+  rgb_led_pin: GPIO12
+
+  # IR Receiver
+  ir_rx_pin: GPIO39
+
+  # SPI pins (for display)
+  spi_clk_pin: GPIO18
+  spi_mosi_pin: GPIO23
+  spi_miso_pin: GPIO19
+
+  # Ethernet (W5500)
+  eth_cs_pin: GPIO15
+  eth_interrupt_pin: GPIO35
+  eth_reset_pin: GPIO14
+
+  # Display control pins
+  display_cs_pin: GPIO05
+  display_dc_pin: GPIO04
+  display_reset_pin: GPIO32
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.12.2
+  name_add_mac_suffix: false
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  variant: esp32
+  flash_size: 8MB
+  cpu_frequency: 240MHz
+  framework:
+    type: esp-idf
+    version: recommended
+    advanced:
+      minimum_chip_revision: "3.1"
+      sram1_as_iram: true
+    sdkconfig_options:
+      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+      CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST: "y"
+      CONFIG_BT_BLE_DYNAMIC_ENV_MEMORY: "y"
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+      CONFIG_MBEDTLS_SSL_PROTO_TLS1_3: "y"
+
+# DEBUG while commissioning the DRC - the component logs every coefficient
+# write and the Register Dump button needs this level. Put it back to INFO
+# once you are happy.
+logger:
+  level: DEBUG
+
+api:
+
+ota:
+  platform: esphome
+  password: !secret esphome_ota_password
+
+wifi:
+  ssid: !secret esphome_wifi_ssid
+  password: !secret esphome_wifi_password
+
+psram:
+  speed: 80MHz
+
+network:
+  enable_ipv6: true
+
+# ===== Packages =====
+packages:
+  # The DAC package is local, because it carries the DRC additions.
+  # Note it is NOT in the remote list below.
+  external_dac: !include packages/dac-tas58xx-drc.yaml
+
+  esparagus_remote:
+    url: https://github.com/sonocotta/esp32-audio-dock
+    ref: main
+    files:
+      # dac-tas58xx.yaml deliberately omitted - replaced by the local
+      # dac-tas58xx-drc.yaml above.
+      - firmware/esphome/packages/audio.yaml
+      - firmware/esphome/packages/audio-addon-external-dac.yaml
+      - firmware/esphome/packages/media-player.yaml
+      - firmware/esphome/packages/media-player-addon-dac-enable.yaml
+      - firmware/esphome/packages/media-player-addon-tas58xx.yaml
+
+      - firmware/esphome/packages/light.yaml
+      - firmware/esphome/packages/ir-receiver.yaml
+      - firmware/esphome/packages/monitoring.yaml
+      - firmware/esphome/packages/monitoring-wifi.yaml

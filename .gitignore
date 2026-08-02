@@ -1,0 +1,31 @@
+# Upstream repos cloned for reference only - 1.1 GB, and each has its own .git.
+# Recreate with:
+#   git clone https://github.com/sonocotta/esp32-audio-dock       reference/esp32-audio-dock
+#   git clone https://github.com/sonocotta/esp32-tas5805m-dac     reference/esp32-tas5805m-dac
+#   git clone https://github.com/mrtoy-me/esphome-tas58xx         reference/esphome-tas58xx
+reference/
+
+# Real credentials. Commit secrets.yaml.example instead.
+secrets.yaml
+
+# ESPHome / PlatformIO build output
+.esphome/
+build/
+*.bin
+*.elf
+
+# Host-side C++ check artifacts
+tools/cpp_check/*.exe
+tools/cpp_check/*.obj
+tools/cpp_check/*.o
+tools/cpp_check/out/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor / agent local state
+.claude/
+.vscode/
+.DS_Store
+Thumbs.db

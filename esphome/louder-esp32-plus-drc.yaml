@@ -1,0 +1,77 @@
+# ============================================================
+# Louder-ESP32-Plus - media player with 3-band DRC
+# ============================================================
+# ESP32 + TAS5825M (NOT TAS5805M - see docs/tas58xx-drc-reference.md §1).
+# Pinout taken from sonocotta/esp32-audio-dock
+# firmware/esphome/7-louder-esp32-plus/louder-esp32-plus-idf.yaml.
+#
+# Validate with:  esphome config esphome/louder-esp32-plus-drc.yaml
+# ============================================================
+
+substitutions:
+  name: louder-plus-drc
+  friendly_name: Louder-ESP32-Plus DRC
+  task_stack_in_psram: "false"
+
+  # ===== Board-Specific Pinouts =====
+  i2s_lrclk_pin: GPIO25
+  i2s_bclk_pin: GPIO26
+  i2s_dout_pin: GPIO22
+
+  # TAS5825M
+  tas58xx_variant: TAS5825M
+  tas58xx_enable_pin: GPIO33
+  i2c_sda_pin: GPIO21
+  i2c_scl_pin: GPIO27
+
+  rgb_led_pin: GPIO12
+  ir_rx_pin: GPIO39
+
+  # ===== DRC =====
+  # Start with one full-range band to validate the coefficient math on hardware.
+  # Move to "3" only after confirming band 1 behaves, and set the corners below.
+  tas58xx_drc_bands: "1"
+  tas58xx_drc_crossover_low: 300Hz
+  tas58xx_drc_crossover_high: 3000Hz
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.12.2
+  name_add_mac_suffix: false
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  variant: esp32
+  flash_size: 8MB
+  cpu_frequency: 240MHz
+  framework:
+    type: esp-idf
+    version: recommended
+    advanced:
+      minimum_chip_revision: "3.1"
+      sram1_as_iram: true
+    sdkconfig_options:
+      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+
+logger:
+  level: DEBUG
+
+api:
+
+ota:
+  platform: esphome
+  password: !secret esphome_ota_password
+
+wifi:
+  ssid: !secret esphome_wifi_ssid
+  password: !secret esphome_wifi_password
+
+psram:
+  speed: 80MHz
+
+packages:
+  external_dac: !include packages/dac-tas58xx-drc.yaml

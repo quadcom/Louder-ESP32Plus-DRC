@@ -1,0 +1,216 @@
+# ============================================================
+# TAS5805M / TAS5825M DAC with 3-band DRC
+# ============================================================
+# Adapted from sonocotta/esp32-audio-dock packages/dac-tas58xx.yaml, with the
+# DRC controls added. Uses the local fork of mrtoy-me/esphome-tas58xx in
+# ../../components rather than the upstream component.
+#
+# Requires substitutions:
+#   - tas58xx_variant      TAS5805M or TAS5825M
+#   - tas58xx_enable_pin   physical pin wired to PDN
+#   - i2c_sda_pin, i2c_scl_pin
+#
+# NOTE ON BANDS
+#   drc_bands: 1  (default) - one full-range compressor. The crossover biquads
+#                 stay at their pass-through defaults and DRC bands 2 and 3 stay
+#                 muted, exactly as out of reset. Only the drc_low_* controls do
+#                 anything. This is the safe starting point.
+#   drc_bands: 3  - programs the crossover and sums all three bands. All fifteen
+#                 controls become live. Do not set this without also setting
+#                 sensible crossover corners: the bands are summed, so a wrong
+#                 crossover means overlapping bands and a level rise.
+# ============================================================
+
+substitutions:
+  tas58xx_dac_mode: BTL
+  tas58xx_modulation: BD_MODE
+  tas58xx_mixer_mode: STEREO
+  tas58xx_analog_gain: 0db
+  tas58xx_volume_max: 0dB
+  tas58xx_volume_min: -60dB
+  tas58xx_refresh_eq: AUTO
+  tas58xx_dac_restore_mode: ALWAYS_ON
+
+  # DRC
+  tas58xx_drc_bands: "1"
+  tas58xx_drc_crossover_low: 300Hz
+  tas58xx_drc_crossover_high: 3000Hz
+  tas58xx_drc_energy: 2ms
+  tas58xx_drc_dsp_rate: "96000"
+  tas58xx_drc_restore_mode: RESTORE_DEFAULT_OFF
+
+external_components:
+  # Relative to the directory of the top-level YAML that includes this package,
+  # not to this file - so this assumes the board config lives in esphome/.
+  - source:
+      type: local
+      path: ../components
+    components: [tas58xx]
+
+i2c:
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  frequency: 400kHz
+  scan: true
+
+audio_dac:
+  - platform: tas58xx
+    id: external_dac
+    tas58xx_dac: ${tas58xx_variant}
+    enable_pin: ${tas58xx_enable_pin}
+    modulation: ${tas58xx_modulation}
+    dac_mode: ${tas58xx_dac_mode}
+    mixer_mode: ${tas58xx_mixer_mode}
+    analog_gain: ${tas58xx_analog_gain}
+    volume_max: ${tas58xx_volume_max}
+    volume_min: ${tas58xx_volume_min}
+    refresh_eq: ${tas58xx_refresh_eq}
+    update_interval: 5s
+
+    # DRC topology. See the note above before changing drc_bands to 3.
+    drc_bands: ${tas58xx_drc_bands}
+    drc_crossover_low: ${tas58xx_drc_crossover_low}
+    drc_crossover_high: ${tas58xx_drc_crossover_high}
+    drc_energy: ${tas58xx_drc_energy}
+    # The DSP internal rate, not the I2S rate. Process Flow 1 upconverts to
+    # 88.2/96 kHz; picking the wrong one skews attack/release by up to 8.8%.
+    drc_dsp_rate: ${tas58xx_drc_dsp_rate}
+
+switch:
+  - platform: tas58xx
+    enable_dac:
+      name: Enable DAC
+      id: enable_dac
+      restore_mode: ${tas58xx_dac_restore_mode}
+
+    # Master DRC enable. Off zeroes every slope and offset so the DRC is a
+    # no-op. Required whenever any drc_* number is configured.
+    enable_drc:
+      name: DRC
+      id: enable_drc
+      restore_mode: ${tas58xx_drc_restore_mode}
+
+select:
+  - platform: tas58xx
+    mixer_mode:
+      name: _Mixer Mode
+    eq_mode:
+      name: EQ Mode
+      id: tas58xx_eq_mode_select
+
+number:
+  - platform: tas58xx
+    channel_volume_left:
+      name: _Volume Left
+    channel_volume_right:
+      name: _Volume Right
+
+    # ---- DRC low band ----
+    # In drc_bands: 1 this is the full-range compressor.
+    drc_low_threshold:
+      name: DRC Low Threshold
+    drc_low_ratio:
+      name: DRC Low Ratio
+    drc_low_attack:
+      name: DRC Low Attack
+    drc_low_release:
+      name: DRC Low Release
+    drc_low_makeup:
+      name: DRC Low Makeup
+
+    # ---- DRC mid band ----  (inert unless drc_bands: 3)
+    drc_mid_threshold:
+      name: DRC Mid Threshold
+    drc_mid_ratio:
+      name: DRC Mid Ratio
+    drc_mid_attack:
+      name: DRC Mid Attack
+    drc_mid_release:
+      name: DRC Mid Release
+    drc_mid_makeup:
+      name: DRC Mid Makeup
+
+    # ---- DRC high band ---- (inert unless drc_bands: 3)
+    drc_high_threshold:
+      name: DRC High Threshold
+    drc_high_ratio:
+      name: DRC High Ratio
+    drc_high_attack:
+      name: DRC High Attack
+    drc_high_release:
+      name: DRC High Release
+    drc_high_makeup:
+      name: DRC High Makeup
+
+    # 15-band EQ, ganged. Left channel drives both when EQ is ganged.
+    left_eq_gain_20Hz:
+      name: Left ---20Hz
+    left_eq_gain_31.5Hz:
+      name: Left ---31.5Hz
+    left_eq_gain_50Hz:
+      name: Left ---50Hz
+    left_eq_gain_80Hz:
+      name: Left ---80Hz
+    left_eq_gain_125Hz:
+      name: Left --125Hz
+    left_eq_gain_200Hz:
+      name: Left --200Hz
+    left_eq_gain_315Hz:
+      name: Left --315Hz
+    left_eq_gain_500Hz:
+      name: Left --500Hz
+    left_eq_gain_800Hz:
+      name: Left --800Hz
+    left_eq_gain_1250Hz:
+      name: Left -1250Hz
+    left_eq_gain_2000Hz:
+      name: Left -2000Hz
+    left_eq_gain_3150Hz:
+      name: Left -3150Hz
+    left_eq_gain_5000Hz:
+      name: Left -5000Hz
+    left_eq_gain_8000Hz:
+      name: Left -8000Hz
+    left_eq_gain_16000Hz:
+      name: Left 16000Hz
+
+sensor:
+  - platform: tas58xx
+    faults_cleared:
+      name: "Times Faults Cleared"
+
+binary_sensor:
+  - platform: tas58xx
+    have_fault:
+      name: Any Faults
+      exclude: CLOCK_FAULT
+    left_channel_dc_fault:
+      name: Left Channel DC Fault
+    right_channel_dc_fault:
+      name: Right Channel DC Fault
+    left_channel_over_current:
+      name: Left Channel Over Current
+    right_channel_over_current:
+      name: Right Channel Over Current
+    otp_crc_check:
+      name: CRC Check Fault
+    bq_write_failed:
+      name: BQ Write Failure
+    pcdd_over_voltage:
+      name: PCDD Over Voltage
+    pcdd_under_voltage:
+      name: PCDD Under Voltage
+    over_temp_shutdown:
+      name: Over Temperature Shutdown Fault
+    over_temp_warning:
+      name: Over Temperature Warning
+      id: over_temperature_warning
+
+# Dumps the live DRC block to the log. Use it to capture a baseline before
+# touching anything, and to confirm writes landed where the map says.
+button:
+  - platform: template
+    name: DRC Register Dump
+    entity_category: diagnostic
+    on_press:
+      - lambda: id(external_dac)->log_drc_registers();
