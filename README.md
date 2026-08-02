@@ -172,6 +172,31 @@ so every coefficient is lost on power cycle.
 Ratio 1:1 makes a band inert, and that is the default, so a fresh install
 changes nothing until you ask it to.
 
+Two buttons: **DRC Register Dump** (diagnostic, read-only) and **DRC Reset
+Defaults**, which puts all fifteen controls back to their compiled-in values.
+The reset routes through each entity's `control()`, so the Home Assistant state,
+the saved preference and the DSP all end up agreeing — and since ratio 1:1 is a
+unity gain curve, the result is inert whatever the master switch is doing. The
+switch itself is deliberately left alone.
+
+Three `DRC Low` / `DRC Mid` / `DRC High` text entities act as dividers on the
+device page. Home Assistant has no spacer primitive and sorts each category
+alphabetically, so a header whose name is a strict prefix of its band's controls
+always lands directly above them.
+
+### Do not add `on_boot` to a board config
+
+`sendspin-addon-tas58xx.yaml` uses `esphome.on_boot` to play the silent startup
+FLAC, and that FLAC is the only thing that gives the DSP its I²S clock lock.
+ESPHome's package merge **replaces** a dict with a list rather than appending,
+so an `on_boot` in your own file deletes the package's. It validates cleanly,
+boots fine, and every EQ and DRC coefficient is then silently discarded with
+nothing in the log to explain it.
+
+This was hit while adding the band headers above — which is why they are polled
+template sensors rather than published once at boot. If you need a boot action,
+put it behind a trigger the packages do not use.
+
 ### One band vs three
 
 `drc_bands: 1` (default) is a single full-range compressor. The crossover

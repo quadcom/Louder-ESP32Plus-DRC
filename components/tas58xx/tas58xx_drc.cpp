@@ -7,6 +7,12 @@
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 
+// For reset_drc_to_defaults(), which needs the complete DrcNumber type -
+// tas58xx.h only forward-declares it. Safe to include unconditionally for the
+// same reason the definitions below are unguarded: number/drc_number.cpp is
+// always compiled, so this header is always part of the build.
+#include "number/drc_number.h"
+
 #include <cstdio>   // snprintf, for the crossover scan dump
 
 namespace esphome::tas58xx {
@@ -323,6 +329,32 @@ bool Tas58xxComponent::apply_drc_mixer_() {
 
   ESP_LOGD(TAG, "Set DRC band mixer gains");
   return true;
+}
+
+void Tas58xxComponent::register_drc_number(DrcNumber *number) {
+  if (number != nullptr) this->drc_numbers_.push_back(number);
+}
+
+void Tas58xxComponent::reset_drc_to_defaults() {
+  if (this->drc_numbers_.empty()) {
+    ESP_LOGW(TAG, "No DRC numbers configured - nothing to reset");
+    return;
+  }
+
+  // Each control writes its own band through, so a full reset re-writes each
+  // band once per parameter rather than once. Wasteful, but this is a manual
+  // button and correctness beats saving a few dozen I2C transactions: routing
+  // it through control() is what keeps the entity state, the saved preference
+  // and the DSP in agreement.
+  for (DrcNumber *number : this->drc_numbers_) {
+    number->reset_to_default();
+  }
+
+  ESP_LOGI(TAG, "DRC reset to defaults: %.0fdB %.1f:1 attack %.1fms release %.0fms makeup %.0fdB",
+           DRC_THRESHOLD_DEFAULT_DB, DRC_RATIO_DEFAULT, DRC_ATTACK_DEFAULT_MS,
+           DRC_RELEASE_DEFAULT_MS, DRC_MAKEUP_DEFAULT_DB);
+  ESP_LOGI(TAG, "  %d control(s) restored. Ratio 1:1 is unity, so the DRC is now inert.",
+           static_cast<int>(this->drc_numbers_.size()));
 }
 
 void Tas58xxComponent::log_drc_registers() {

@@ -32,6 +32,11 @@ void DrcNumber::setup() {
   this->pref_ = this->make_entity_preference<float>();
   if (!this->pref_.load(&value)) value = this->restore_default_();
 
+  // So the component can drive every configured control from one button. Only
+  // the entities actually present in the YAML register, which is what we want:
+  // a reset must not invent controls the user did not ask for.
+  this->parent_->register_drc_number(this);
+
   this->publish_state(value);
   this->apply_(value);
 

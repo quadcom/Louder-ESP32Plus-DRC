@@ -21,6 +21,12 @@ class DrcNumber : public number::Number, public Component, public Parented<Tas58
   void set_drc_band(DrcBand band) { this->band_ = band; }
   void set_drc_parameter(DrcParameter parameter) { this->parameter_ = parameter; }
 
+  // Restores this control's compiled-in default, exactly as if it had been set
+  // from Home Assistant: publishes the new state, writes it through to the DSP
+  // and saves it, so a reboot does not resurrect the old value. Driven by the
+  // component's reset_drc_to_defaults().
+  void reset_to_default() { this->control(this->restore_default_()); }
+
  protected:
   void control(float value) override;
 

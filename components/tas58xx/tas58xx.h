@@ -16,7 +16,13 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #endif
 
+#include <vector>
+
 namespace esphome::tas58xx {
+
+// Defined in number/drc_number.h, which includes this header - so only the
+// pointer type is available here.
+class DrcNumber;
 
 class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, public i2c::I2CDevice {
  public:
@@ -131,6 +137,16 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
   // Reads the live DRC block back and logs it. Captures a baseline before
   // anything is written, and verifies writes afterwards.
   void log_drc_registers();
+
+  // Called by each DrcNumber from its setup(), so a reset can drive exactly the
+  // controls the YAML defines and no others.
+  void register_drc_number(DrcNumber *number);
+
+  // Restores every configured DRC control to its compiled-in default: ratio
+  // 1:1, makeup 0dB, and the documented threshold and time constants. Ratio 1:1
+  // is a unity gain curve, so this leaves the DRC inert whatever the master
+  // switch is doing. States are published and saved, so it survives a reboot.
+  void reset_drc_to_defaults();
 
   bool is_muted() override { return this->is_muted_; }
   bool set_mute_off() override;
@@ -300,6 +316,10 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
 
    //// DRC state
    DrcBandSettings tas58xx_drc_[NUMBER_DRC_BANDS];
+
+   // Every DRC number the YAML defines, registered from its setup(). Only used
+   // by reset_drc_to_defaults(); at most fifteen entries.
+   std::vector<DrcNumber *> drc_numbers_;
 
    bool drc_enabled_{false};   // master enable; DRC is a no-op out of reset
 

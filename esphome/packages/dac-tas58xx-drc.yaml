@@ -238,3 +238,48 @@ button:
     entity_category: diagnostic
     on_press:
       - lambda: id(external_dac)->log_drc_registers();
+
+  # Restores all fifteen controls to their compiled-in defaults: ratio 1:1,
+  # makeup 0dB, documented threshold and time constants. Ratio 1:1 is a unity
+  # gain curve, so the DRC ends up inert whatever the DRC switch is set to - the
+  # switch is deliberately left alone. Values are published, written to the DSP
+  # and saved, so a reboot does not resurrect the old ones.
+  - platform: template
+    name: DRC Reset Defaults
+    entity_category: config
+    on_press:
+      - lambda: id(external_dac)->reset_drc_to_defaults();
+
+# ===== DRC band headers =====
+# Home Assistant has no spacer entity, and a device page sorts each category's
+# entities alphabetically by name. A header whose name is a strict PREFIX of the
+# five controls below it always sorts immediately above them - "DRC Low" before
+# "DRC Low Attack" - which turns it into a labelled divider.
+#
+# entity_category must be config to match the DRC numbers, or these land in a
+# different section and divide nothing. Bands come out in alphabetical order
+# (High, Low, Mid); each is labelled, so that reads fine.
+#
+# Polled rather than published once at boot: esphome.on_boot cannot be used from
+# a config that also pulls sendspin-addon-tas58xx.yaml, because ESPHome's
+# package merge replaces a dict with a list and would silently delete that
+# package's boot FLAC - the thing that gives the DSP its clock lock.
+text_sensor:
+  - platform: template
+    name: DRC Low
+    id: drc_header_low
+    entity_category: config
+    update_interval: 60s
+    lambda: 'return {"────────────"};'
+  - platform: template
+    name: DRC Mid
+    id: drc_header_mid
+    entity_category: config
+    update_interval: 60s
+    lambda: 'return {"────────────"};'
+  - platform: template
+    name: DRC High
+    id: drc_header_high
+    entity_category: config
+    update_interval: 60s
+    lambda: 'return {"────────────"};'
