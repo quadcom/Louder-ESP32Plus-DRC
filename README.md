@@ -56,6 +56,29 @@ for `esphome config` checks. **Do not flash it and expect DRC to work** — the
 DSP ignores coefficient writes until it has locked to the I²S clock, which is
 why the player packages play a silent FLAC at boot.
 
+The component is pulled from this repo, so nothing needs copying:
+
+```yaml
+external_components:
+  - source: github://quadcom/Louder-ESP32Plus-DRC@${tas58xx_drc_branch}
+    components: [tas58xx]
+    refresh: 48h
+```
+
+Override `tas58xx_drc_branch` in your board YAML to pin a tag or track a
+feature branch. It defaults to `main`.
+
+### Home Assistant add-on / ESPHome Device Builder
+
+Copy one file into the add-on's config share and add a board YAML beside it:
+
+```
+esphome/packages/dac-tas58xx-drc.yaml  ->  /config/esphome/packages/
+esphome/louder-esp32-plus-drc-*.yaml   ->  /config/esphome/
+```
+
+No `components/` copy and no path edit — the component comes from GitHub.
+
 ### Local CLI
 
 ```
@@ -64,45 +87,27 @@ pip install esphome                     # 2026.7.3 or later
 esphome run esphome/louder-esp32-plus-drc-sendspin.yaml
 ```
 
-The `external_components` path in the package is `../components`, resolved
-relative to the directory of the **top-level** YAML — so run it from the project
-root with the config still in `esphome/`.
-
 Keep `name:` matching the device already in Home Assistant so it keeps its
 entity history, and flash over OTA from the existing firmware.
 
-### Home Assistant add-on / ESPHome Device Builder
+### Working on the component itself
 
-Copy two things into the add-on's config share:
-
-```
-components/tas58xx/           ->  /config/esphome/components/tas58xx/
-esphome/packages/dac-tas58xx-drc.yaml -> /config/esphome/packages/
-```
-
-Then copy one of the board YAMLs to `/config/esphome/` and change the component
-path, since the YAML now sits beside `components/` rather than above it:
+Building from GitHub means a push before every test flash. To build against the
+working copy instead, swap the `external_components` block in
+`packages/dac-tas58xx-drc.yaml` for the commented-out local one kept directly
+below it:
 
 ```yaml
 external_components:
   - source:
       type: local
-      path: components      # was ../components
+      path: ../components
     components: [tas58xx]
 ```
 
-That edit goes in `packages/dac-tas58xx-drc.yaml`.
-
-Alternative that avoids copying: push this fork to a git remote and point the
-package at it instead, which is the tidier option if you run more than one
-board.
-
-```yaml
-external_components:
-  - source: github://<you>/esphome-tas58xx-drc@main
-    components: [tas58xx]
-    refresh: 48h
-```
+That path is relative to the directory of the **top-level** YAML, not the
+package — so it assumes the board config stays in `esphome/`. Run `esphome` from
+the project root.
 
 ## Verify before flashing
 

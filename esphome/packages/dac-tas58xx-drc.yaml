@@ -2,8 +2,10 @@
 # TAS5805M / TAS5825M DAC with 3-band DRC
 # ============================================================
 # Adapted from sonocotta/esp32-audio-dock packages/dac-tas58xx.yaml, with the
-# DRC controls added. Uses the local fork of mrtoy-me/esphome-tas58xx in
-# ../../components rather than the upstream component.
+# DRC controls added. Pulls the component from quadcom/Louder-ESP32Plus-DRC, a
+# fork of mrtoy-me/esphome-tas58xx, rather than upstream. See the
+# external_components block below for how to build against a working copy
+# instead.
 #
 # Requires substitutions:
 #   - tas58xx_variant      TAS5805M or TAS5825M
@@ -22,6 +24,9 @@
 # ============================================================
 
 substitutions:
+  # Branch or tag of quadcom/Louder-ESP32Plus-DRC to build the component from.
+  tas58xx_drc_branch: main
+
   tas58xx_dac_mode: BTL
   tas58xx_modulation: BD_MODE
   tas58xx_mixer_mode: STEREO
@@ -40,12 +45,19 @@ substitutions:
   tas58xx_drc_restore_mode: RESTORE_DEFAULT_OFF
 
 external_components:
-  # Relative to the directory of the top-level YAML that includes this package,
-  # not to this file - so this assumes the board config lives in esphome/.
-  - source:
-      type: local
-      path: ../components
+  - source: github://quadcom/Louder-ESP32Plus-DRC@${tas58xx_drc_branch}
     components: [tas58xx]
+    refresh: 48h
+
+  # Development alternative: build against the working copy instead of the
+  # remote, so you can test without pushing first. Comment out the block above
+  # and uncomment this one. The path is relative to the directory of the
+  # top-level YAML that includes this package, not to this file - so it assumes
+  # the board config lives in esphome/ alongside this packages/ directory.
+  # - source:
+  #     type: local
+  #     path: ../components
+  #   components: [tas58xx]
 
 i2c:
   sda: ${i2c_sda_pin}
