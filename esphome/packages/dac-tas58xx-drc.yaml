@@ -18,9 +18,12 @@
 #                 muted, exactly as out of reset. Only the drc_low_* controls do
 #                 anything. This is the safe starting point.
 #   drc_bands: 3  - programs the crossover and sums all three bands. All fifteen
-#                 controls become live. Do not set this without also setting
-#                 sensible crossover corners: the bands are summed, so a wrong
-#                 crossover means overlapping bands and a level rise.
+#                 controls become live. The TAS5825M crossover addresses were
+#                 confirmed correct by hardware readback on 2026-08-02, but the
+#                 crossover write path itself has not been run on a board. Do not
+#                 set this without also setting sensible crossover corners: the
+#                 bands are summed, so a wrong crossover means overlapping bands
+#                 and a level rise of up to about +9.5dB.
 # ============================================================
 
 substitutions:
