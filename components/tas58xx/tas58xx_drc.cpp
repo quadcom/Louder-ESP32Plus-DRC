@@ -7,6 +7,8 @@
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 
+#include <cstdio>   // snprintf, for the crossover scan dump
+
 namespace esphome::tas58xx {
 
 // Deliberately NOT wrapped in '#ifdef USE_TAS58XX_DRC'. ESPHome compiles every
@@ -351,6 +353,175 @@ void Tas58xxComponent::log_drc_registers() {
 
       ESP_LOGI(TAG, "  %-4s %-6s p%02X/%02X = 0x%08X", DRC_BAND_TEXT[i], NAMES[f],
                fields[f].page, fields[f].sub_addr, static_cast<unsigned>(value));
+    }
+  }
+
+  this->log_drc_crossover_scan_();
+}
+
+//// Crossover region sweep
+//
+// Exists because the TAS5825M crossover addresses are reconstructed and
+// suspected wrong - see the comment on DRC_XOVER_* in tas58xx_drc.h. Out of
+// reset every crossover biquad is a pass-through, which has an unmistakable
+// signature: one non-zero word followed by four zeros. Finding those signatures
+// locates the real blocks without writing anything.
+
+// Which flat slot a (page, sub_addr) maps to, or -1 if outside the swept range.
+static int32_t drc_scan_slot_of(uint8_t page, uint8_t sub_addr) {
+  if (page < DRC_SCAN_PAGE_FIRST || page >= DRC_SCAN_PAGE_FIRST + DRC_SCAN_PAGE_COUNT) return -1;
+  if (sub_addr < DRC_SCAN_SLOT_FIRST || sub_addr > 0x7C) return -1;
+  if ((sub_addr - DRC_SCAN_SLOT_FIRST) % 4 != 0) return -1;
+
+  return (page - DRC_SCAN_PAGE_FIRST) * DRC_SCAN_SLOTS_PAGE +
+         (sub_addr - DRC_SCAN_SLOT_FIRST) / 4;
+}
+
+static uint8_t drc_scan_page_of(uint16_t slot) {
+  return DRC_SCAN_PAGE_FIRST + static_cast<uint8_t>(slot / DRC_SCAN_SLOTS_PAGE);
+}
+
+static uint8_t drc_scan_sub_of(uint16_t slot) {
+  return DRC_SCAN_SLOT_FIRST + static_cast<uint8_t>((slot % DRC_SCAN_SLOTS_PAGE) * 4);
+}
+
+void Tas58xxComponent::log_drc_crossover_scan_() {
+  uint8_t buffer[DRC_SCAN_TOTAL_BYTES];
+  bool slot_valid[DRC_SCAN_TOTAL_SLOTS];
+
+  for (uint16_t i = 0; i < DRC_SCAN_TOTAL_BYTES; i++) buffer[i] = 0;
+  for (uint16_t i = 0; i < DRC_SCAN_TOTAL_SLOTS; i++) slot_valid[i] = false;
+
+  ESP_LOGI(TAG, "DRC crossover scan, book 0x%02X pages 0x%02X-0x%02X:", TAS58XX_EQ_CTRL_BOOK,
+           DRC_SCAN_PAGE_FIRST, DRC_SCAN_PAGE_FIRST + DRC_SCAN_PAGE_COUNT - 1);
+
+  //// read
+  for (uint8_t p = 0; p < DRC_SCAN_PAGE_COUNT; p++) {
+    const uint8_t page = DRC_SCAN_PAGE_FIRST + p;
+
+    for (uint8_t c = 0; c < DRC_SCAN_PAGE_BYTES / DRC_SCAN_CHUNK; c++) {
+      const uint8_t sub_addr = DRC_SCAN_SLOT_FIRST + c * DRC_SCAN_CHUNK;
+      const uint16_t offset = p * DRC_SCAN_PAGE_BYTES + c * DRC_SCAN_CHUNK;
+
+      if (!this->book_and_page_read_(TAS58XX_EQ_CTRL_BOOK, page, sub_addr, buffer + offset,
+                                     DRC_SCAN_CHUNK)) {
+        ESP_LOGW(TAG, "  p%02X/%02X read failed - %d slots unknown", page, sub_addr,
+                 DRC_SCAN_CHUNK / 4);
+        continue;
+      }
+      for (uint8_t s = 0; s < DRC_SCAN_CHUNK / 4; s++) {
+        slot_valid[p * DRC_SCAN_SLOTS_PAGE + c * (DRC_SCAN_CHUNK / 4) + s] = true;
+      }
+    }
+  }
+
+  // The wire is MSB first.
+  auto word_at = [&buffer](uint16_t slot) -> uint32_t {
+    const uint8_t* b = buffer + static_cast<uint16_t>(slot) * 4;
+    return (static_cast<uint32_t>(b[0]) << 24) | (static_cast<uint32_t>(b[1]) << 16) |
+           (static_cast<uint32_t>(b[2]) << 8) | b[3];
+  };
+
+  //// raw dump, six words per line
+  static constexpr uint8_t PER_LINE = 6;
+  for (uint16_t slot = 0; slot < DRC_SCAN_TOTAL_SLOTS; slot += PER_LINE) {
+    // 6 words * 9 chars + terminator fits with room to spare, but clamp anyway
+    // so a truncating snprintf can never underflow the remaining size.
+    char line[80];
+    size_t used = 0;
+    line[0] = '\0';
+
+    for (uint8_t i = 0; i < PER_LINE && (slot + i) < DRC_SCAN_TOTAL_SLOTS; i++) {
+      if (used + 1 >= sizeof(line)) break;
+
+      const int written = slot_valid[slot + i]
+                              ? snprintf(line + used, sizeof(line) - used, " %08X",
+                                         static_cast<unsigned>(word_at(slot + i)))
+                              : snprintf(line + used, sizeof(line) - used, " --------");
+      if (written <= 0) break;
+
+      used += static_cast<size_t>(written);
+      if (used >= sizeof(line)) {
+        used = sizeof(line) - 1;
+        break;
+      }
+    }
+
+    ESP_LOGI(TAG, "  p%02X/%02X%s", drc_scan_page_of(slot), drc_scan_sub_of(slot), line);
+  }
+
+  //// pass-through signatures
+  ESP_LOGI(TAG, "  pass-through candidates (B0 non-zero, B1/B2/A1/A2 zero):");
+  uint8_t found = 0;
+
+  for (uint16_t slot = 0; slot + 4 < DRC_SCAN_TOTAL_SLOTS; slot++) {
+    bool all_valid = true;
+    for (uint8_t i = 0; i < 5; i++) {
+      if (!slot_valid[slot + i]) all_valid = false;
+    }
+    if (!all_valid) continue;
+
+    const uint32_t b0 = word_at(slot);
+    if (b0 == 0) continue;
+    if (word_at(slot + 1) || word_at(slot + 2) || word_at(slot + 3) || word_at(slot + 4)) continue;
+
+    const char* format = "unrecognised unity";
+    if (b0 == DRC_UNITY_F5_27) format = "unity in 5.27";
+    else if (b0 == DRC_UNITY_F2_30) format = "unity in 2.30";
+    else if (b0 == DRC_UNITY_F1_31) format = "unity in 1.31";
+
+    ESP_LOGI(TAG, "    p%02X/%02X B0=0x%08X (%s)", drc_scan_page_of(slot), drc_scan_sub_of(slot),
+             static_cast<unsigned>(b0), format);
+    found++;
+  }
+
+  if (found == 0) {
+    ESP_LOGW(TAG, "    none - crossover may be outside the swept pages, or already programmed");
+  } else {
+    ESP_LOGI(TAG, "    %d candidate(s). Eight are expected while the crossover is at reset.", found);
+  }
+
+  //// verdict on the configured addresses
+  ESP_LOGI(TAG, "  configured DRC_XOVER_* addresses:");
+
+  struct ScanGroup {
+    const char* label;
+    const DrcBiquadAddress* addresses;
+    uint8_t count;
+  };
+  const ScanGroup groups[] = {
+      {"low ", DRC_XOVER_LOW, DRC_XOVER_LOW_SECTIONS},
+      {"mid ", DRC_XOVER_MID, DRC_XOVER_MID_SECTIONS},
+      {"high", DRC_XOVER_HIGH, DRC_XOVER_HIGH_SECTIONS},
+  };
+
+  for (const ScanGroup& group : groups) {
+    for (uint8_t i = 0; i < group.count; i++) {
+      const DrcBiquadAddress& address = group.addresses[i];
+      const int32_t slot = drc_scan_slot_of(address.page, address.sub_addr);
+
+      if (slot < 0) {
+        ESP_LOGW(TAG, "    %s BQ%d p%02X/%02X outside swept range", group.label, i + 1,
+                 address.page, address.sub_addr);
+        continue;
+      }
+
+      // A biquad needs five slots and may straddle a page, which is contiguous
+      // in this buffer - but it must not run off the end of the swept region.
+      if (static_cast<uint16_t>(slot) + 4 >= DRC_SCAN_TOTAL_SLOTS) {
+        ESP_LOGW(TAG, "    %s BQ%d p%02X/%02X runs past the swept range", group.label, i + 1,
+                 address.page, address.sub_addr);
+        continue;
+      }
+
+      const uint32_t b0 = word_at(slot);
+      const bool tail_zero = !word_at(slot + 1) && !word_at(slot + 2) && !word_at(slot + 3) &&
+                             !word_at(slot + 4);
+      const bool passthrough = (b0 != 0) && tail_zero;
+
+      ESP_LOGI(TAG, "    %s BQ%d p%02X/%02X B0=0x%08X %s", group.label, i + 1, address.page,
+               address.sub_addr, static_cast<unsigned>(b0),
+               passthrough ? "= pass-through, address plausible" : "NOT pass-through - suspect");
     }
   }
 }

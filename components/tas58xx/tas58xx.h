@@ -186,6 +186,13 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
    // Writes one 32-bit DSP coefficient, already byte-swapped for the wire.
    bool write_drc_coefficient_(uint8_t page, uint8_t sub_addr, int32_t wire_value);
 
+   // Read-only sweep of the crossover region, called by log_drc_registers().
+   // Dumps every coefficient slot, flags anything shaped like a resting
+   // pass-through biquad, and reports what is actually at each address the
+   // DRC_XOVER_* tables claim. Locating the crossover blocks by observation
+   // rather than by trusting the reconstructed addresses.
+   void log_drc_crossover_scan_();
+
    bool write_drc_biquad_(const DrcBiquadAddress& address,
                           const tas58xx_helpers::BiquadCoefficients& bq);
 

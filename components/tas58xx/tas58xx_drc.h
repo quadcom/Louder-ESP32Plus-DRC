@@ -104,6 +104,10 @@ static constexpr DrcBiquadAddress DRC_XOVER_HIGH[DRC_XOVER_HIGH_SECTIONS] = { {0
 // B0, B2, A2 are 1.31 while B1 and A1 are 2.30 (the halved coefficients).
 static constexpr bool DRC_XOVER_MIXED_FORMAT = true;
 
+// Diagnostic sweep range - covers every page the crossover tables above name.
+static constexpr uint8_t DRC_SCAN_PAGE_FIRST = 0x2A;
+static constexpr uint8_t DRC_SCAN_PAGE_COUNT = 5;   // 0x2A .. 0x2E
+
 #else
 //// TAS5825M - SLAA786A Table 9
 
@@ -161,7 +165,43 @@ static constexpr DrcBiquadAddress DRC_XOVER_MID[DRC_XOVER_MID_SECTIONS]   = { {0
 // TAS5825M crossover biquads are 5.27 throughout, like its EQ biquads.
 static constexpr bool DRC_XOVER_MIXED_FORMAT = false;
 
+// Diagnostic sweep range - covers every page the crossover tables above name,
+// which is also the region the addresses are suspected of being wrong within.
+static constexpr uint8_t DRC_SCAN_PAGE_FIRST = 0x07;
+static constexpr uint8_t DRC_SCAN_PAGE_COUNT = 3;   // 0x07 .. 0x09
+
 #endif
+
+//// Diagnostic sweep geometry (identical on both parts)
+//
+// A DSP page carries coefficients at 0x08..0x7F - 120 bytes, 30 four-byte
+// slots - and that space is contiguous across pages. The TAS5805M's own proven
+// EQ layout demonstrates it: a biquad starting at 0x7C continues at the next
+// page's 0x08. So concatenating each page's 0x08..0x7F gives a flat coefficient
+// array, and a biquad that straddles a page boundary is contiguous within it.
+//
+// 0x7F is the book-select register, but book changes are only honoured from page
+// zero, so on a coefficient page it is ordinary data. The proven EQ tables write
+// it as the last byte of every sixth biquad.
+
+static constexpr uint8_t DRC_SCAN_SLOT_FIRST  = 0x08;
+static constexpr uint8_t DRC_SCAN_PAGE_BYTES  = 0x78;  // 0x7F - 0x08 + 1 = 120
+static constexpr uint8_t DRC_SCAN_SLOTS_PAGE  = DRC_SCAN_PAGE_BYTES / 4;  // 30
+
+// Read granularity. 20 bytes is one biquad and divides 120 exactly, so each
+// read is a whole candidate biquad and no read spans a page boundary.
+static constexpr uint8_t DRC_SCAN_CHUNK       = 20;
+
+static constexpr uint16_t DRC_SCAN_TOTAL_SLOTS =
+    static_cast<uint16_t>(DRC_SCAN_PAGE_COUNT) * DRC_SCAN_SLOTS_PAGE;
+static constexpr uint16_t DRC_SCAN_TOTAL_BYTES =
+    static_cast<uint16_t>(DRC_SCAN_PAGE_COUNT) * DRC_SCAN_PAGE_BYTES;
+
+// Values a resting pass-through biquad's B0 can hold, depending on the format
+// TI used for that block. Everything else in the biquad reads zero.
+static constexpr uint32_t DRC_UNITY_F5_27 = 0x08000000;
+static constexpr uint32_t DRC_UNITY_F2_30 = 0x40000000;
+static constexpr uint32_t DRC_UNITY_F1_31 = 0x7FFFFFFF;  // 1.0 is unrepresentable
 
 //// Documented reset values (identical on both parts)
 

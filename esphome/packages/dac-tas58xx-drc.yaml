@@ -218,8 +218,14 @@ binary_sensor:
       name: Over Temperature Warning
       id: over_temperature_warning
 
-# Dumps the live DRC block to the log. Use it to capture a baseline before
-# touching anything, and to confirm writes landed where the map says.
+# Dumps the live DRC block to the log, then sweeps the crossover region and
+# reports every location shaped like a resting pass-through biquad.
+#
+# Read-only - it writes nothing. Press it BEFORE enabling the DRC and before
+# ever setting drc_bands: 3. On the TAS5825M the crossover addresses are
+# reconstructed and suspected wrong, and this is how to find the real ones: out
+# of reset each crossover biquad is a pass-through, which reads as one non-zero
+# word followed by four zeros. Needs logger level DEBUG or lower.
 button:
   - platform: template
     name: DRC Register Dump

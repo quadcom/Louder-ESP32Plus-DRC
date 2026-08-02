@@ -187,7 +187,37 @@ Not yet verified on hardware:
    never does. See the comment on `DRC_XOVER_*` in `tas58xx_drc.h`.
 
    Only `drc_bands: 3` writes them. Leave it at `1` until they are read back and
-   re-derived.
+   re-derived — the **DRC Register Dump** button does the reading, see below.
+
+### Locating the real crossover addresses
+
+The **DRC Register Dump** button is read-only and writes nothing. Press it with
+`drc_bands: 1`, before enabling the DRC, and it will find the crossover blocks
+by observation rather than by trusting the reconstructed table. Needs the logger
+at `DEBUG` or lower.
+
+It sweeps book `0xAA` across the crossover pages and prints:
+
+1. **A raw dump** of every 4-byte slot, six per line. Unreadable slots show as
+   `--------` rather than zeros, because a failed read that looked like zeros
+   would fake the signature below.
+2. **Pass-through candidates.** Out of reset every crossover biquad is a
+   pass-through: one non-zero word then four zeros. The pages are concatenated
+   into one flat buffer first — that space is contiguous across pages, as the
+   5805M's own EQ proves with a biquad starting at `0x7C` and continuing at the
+   next page's `0x08` — so a straddling biquad is still found. Straddling is
+   precisely what is in dispute here. B0's value also names the format:
+   `0x08000000` is unity in 5.27, `0x40000000` in 2.30, `0x7FFFFFFF` in 1.31.
+3. **A verdict per configured address**, marking each of the eight
+   `DRC_XOVER_*` entries `address plausible` or `NOT pass-through - suspect`.
+
+Expect **eight** candidates while the crossover is at reset. Then:
+
+| What you see | What it means |
+| --- | --- |
+| Candidates land on the configured addresses | the alignment concern was unfounded; three-band is safe to try |
+| Candidates land on `0x08 + n*0x14` instead | those are the real addresses — correct the table |
+| No candidates | the crossover is not in the swept pages; the reference doc is wrong |
 
 ### What the risk actually is
 
