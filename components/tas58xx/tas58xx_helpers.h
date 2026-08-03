@@ -19,14 +19,14 @@ int32_t gain_to_f9_23_(int8_t gain);
 // A dimensionless signed quantity in 9.23 - the DRC K region slopes.
 int32_t slope_to_f9_23(float slope);
 
-// A quantity already converted into the DSP's own log-domain units, in 9.23 -
-// DRC thresholds and offsets. NOT a linear gain, and no longer plain dB either:
-// see the DB_PER_UNIT constants in tas58xx_drc.h for what these units are and
-// how they were measured. The caller does the division, so this is deliberately
-// just the fixed-point step.
-//
-// This was db_to_f9_23 until the 2026-08-03 measurement showed the part's log
-// domain is not dB. Identical arithmetic, honest name.
+// A plain dB quantity in 9.23 - DRC gain offsets. NOT a linear gain.
+int32_t db_to_f9_23(float db);
+
+// A quantity converted into the detector's own log units, in 9.23 - the DRC
+// thresholds, and only those. The detector tracks log2 of the mean square, so a
+// threshold is divided by DRC_THRESHOLD_DB_PER_UNIT before it gets here; see
+// tas58xx_drc.h. The caller does the division, so this is deliberately just the
+// fixed-point step, identical to db_to_f9_23 but named for what it carries.
 int32_t log_units_to_f9_23(float units);
 
 // A linear gain expressed in dB, encoded in 9.23 - band mixer gains.

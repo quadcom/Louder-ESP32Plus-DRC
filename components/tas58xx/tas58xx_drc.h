@@ -298,22 +298,36 @@ static constexpr float DRC_T2_DB            =  -1.0f;
 // A -20 dB threshold written raw put the knee at -60 dB, which is why the whole
 // staircase sat in one region and nothing was ever flat.
 //
-// The threshold scale survived measurement, confirmed by where the knee lands.
-// The slope factor did not, and neither did its supposed derivation:
+// What measurement settled, and it is only the threshold that needs scaling:
 //
-// Two runs held every plateau above the knee (threshold -40 dB, ratio 2) so the
-// gaps between plateaus measured the slope and nothing else. Read against a
-// transparent control run rather than against the file's nominal step, they give
-// 1.093 and 0.989 dB of gain per dB of level per unit of slope register. That is
-// 1.0, so **k = 1/ratio - 1 goes to the register unscaled**, exactly as SLOA148
-// says, and the factor of two this code briefly carried was never real.
+//   u        = log2(mean square) = level_dB / 3.0103        (10*log10 2)
+//   gain_dB  = 3.0103 * k * u + O  =  k * level_dB + O
 //
-// Reading against the control is the part that matters. The test file steps
-// 6.00 dB and the room delivers 5.78, so dividing by the nominal 6.00 inflates
-// every slope estimate by 4% - which is where an earlier "1.152" came from.
-// Nothing about the part.
-static constexpr float DRC_THRESHOLD_DB_PER_UNIT = 3.0103f;  // 10*log10 2, knee position
-static constexpr float DRC_OFFSET_DB_PER_UNIT    = 6.0206f;  // 20*log10 2, provisional
+// so the threshold is compared against u and gets divided, while k and O both go
+// in untouched - k because the 3.0103 cancels against u's scaling, O because it is
+// added to a gain that is already in dB.
+//
+// Each of the three was measured separately, all against a transparent control run
+// in the same session:
+//
+//   threshold  the knee lands where it is asked to, bracketed to -20 dBFS RMS by
+//              the plateaus either side of the break. RMS-referenced, so for a
+//              sine the knee sits 3.01 dB above the dialled value in peak terms.
+//   slope      two runs an octave apart in k, with every plateau held above the
+//              knee, give 1.093 and 0.989 dB of gain per dB of level per unit.
+//              That is 1.0, exactly SLOA148's k = 1/ratio - 1.
+//   offset     with the knee at -20 and k at -0.5, the above-knee region fits
+//              gain = -0.533*level - 1.51 against a register holding -1.6610.
+//              0.91 dB per unit, i.e. plain dB.
+//
+// Two wrong turns are worth remembering, because both looked convincing. A factor
+// of two on the slope came from reading a clipped 98 dB SPL as if it were the
+// chip's gain - it was the amp's ceiling. A 1.152 came from dividing by the test
+// file's nominal 6.00 dB step when the room was delivering 5.78; gaps must always
+// be read against a control run, never against the file. And a 20*log10 2 on the
+// offset came from cross-session absolute comparisons, which this board quietly
+// invalidates by re-enabling its EQ on every reboot.
+static constexpr float DRC_THRESHOLD_DB_PER_UNIT = 3.0103f;  // 10*log10 2
 
 static constexpr float DRC_RATIO_MIN        =   1.0f;   // 1:1 = no compression
 static constexpr float DRC_RATIO_MAX        =  20.0f;   // approaching a limiter

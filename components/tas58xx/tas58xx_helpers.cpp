@@ -57,6 +57,12 @@ int32_t slope_to_f9_23(float slope) {
   return byteswap(fixed);
 }
 
+int32_t db_to_f9_23(float db) {
+  int32_t fixed = to_fixed(db, 23);
+  ESP_LOGV(HELPER_TAG, "dB:%.3f  Fixed 9.23: 0x%08X", db, fixed);
+  return byteswap(fixed);
+}
+
 int32_t log_units_to_f9_23(float units) {
   int32_t fixed = to_fixed(units, 23);
   ESP_LOGV(HELPER_TAG, "Log units:%.6f  Fixed 9.23: 0x%08X", units, fixed);

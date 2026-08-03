@@ -38,6 +38,7 @@ static constexpr const char* ERROR = "Error";
 using tas58xx_helpers::BiquadCoefficients;
 using tas58xx_helpers::design_butterworth_highpass;
 using tas58xx_helpers::design_butterworth_lowpass;
+using tas58xx_helpers::db_to_f9_23;
 using tas58xx_helpers::linear_db_to_f9_23;
 using tas58xx_helpers::log_units_to_f9_23;
 using tas58xx_helpers::raw_to_wire;
@@ -196,17 +197,14 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   if (!this->write_drc_coefficient_(addr.decay.page, addr.decay.sub_addr,
                                     time_constant_to_f1_31(s.release_ms, this->drc_dsp_rate_))) ok = false;
 
-  // Everything above is in dB, which is the only sane way to reason about a
-  // compressor. The registers are not: see the DB_PER_UNIT constants in the
-  // header for the measurement that established the DSP's actual log domain.
-  // The slope goes in unscaled - measured at 1.0 dB of gain per dB of level per
-  // unit, so SLOA148's k needs no correction. Kept as a named local because the
-  // three quantities below all read alike this way.
+  // Only the thresholds change units on the way to the registers: they are
+  // compared against log2 of the mean square, where the slope and the offsets are
+  // already in the units the part wants. See the header for the measurements.
   const float slope_raw = slope;
   const float t1_raw = t1_db / DRC_THRESHOLD_DB_PER_UNIT;
   const float t2_raw = t2_db / DRC_THRESHOLD_DB_PER_UNIT;
-  const float off1_raw = off1_db / DRC_OFFSET_DB_PER_UNIT;
-  const float off2_raw = off2_db / DRC_OFFSET_DB_PER_UNIT;
+  const float off1_raw = off1_db;
+  const float off2_raw = off2_db;
 
   // Region 1 is below the knee and must stay unity. A zero slope needs no
   // scaling, but it goes through the same conversion so the three reads alike.
@@ -217,8 +215,8 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   if (!this->write_drc_coefficient_(addr.t1.page, addr.t1.sub_addr, log_units_to_f9_23(t1_raw))) ok = false;
   if (!this->write_drc_coefficient_(addr.t2.page, addr.t2.sub_addr, log_units_to_f9_23(t2_raw))) ok = false;
 
-  if (!this->write_drc_coefficient_(addr.off1.page, addr.off1.sub_addr, log_units_to_f9_23(off1_raw))) ok = false;
-  if (!this->write_drc_coefficient_(addr.off2.page, addr.off2.sub_addr, log_units_to_f9_23(off2_raw))) ok = false;
+  if (!this->write_drc_coefficient_(addr.off1.page, addr.off1.sub_addr, db_to_f9_23(off1_raw))) ok = false;
+  if (!this->write_drc_coefficient_(addr.off2.page, addr.off2.sub_addr, db_to_f9_23(off2_raw))) ok = false;
 
   if (!ok) {
     ESP_LOGW(TAG, "%s writing %s band DRC coefficients", ERROR, DRC_BAND_TEXT[band]);
