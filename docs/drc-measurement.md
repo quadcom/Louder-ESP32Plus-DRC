@@ -20,6 +20,128 @@ Absolute SPL is never used. The room cannot bias the answer.
 
 ---
 
+## 0. The short version
+
+**Six numbers per run, written down on paper.** That is the entire measurement.
+Sections 1–7 are the detailed version; if this section is enough, stop here.
+
+### A. Put the file where the speaker can fetch it
+
+Use `drc-simple.wav` — 64 seconds, a 1 kHz tone that drops in six 6 dB steps,
+eight seconds each. Copy it into Home Assistant's `config/www/` folder (create
+that folder if it doesn't exist). It is then served at:
+
+```
+http://homeassistant.local:8123/local/drc-simple.wav
+```
+
+To regenerate it:
+
+```
+python tools/make_drc_staircase.py --start -6 --stop -36 --step 6 --seconds 8 --reference -18 --out drc-simple.wav
+```
+
+### B. Set the amp up — this part is not optional
+
+In Home Assistant, on the Speaker device page:
+
+| Control | Set to | Because |
+|---|---|---|
+| Media player volume | **100%** | ESPHome scales the audio in software before the DSP sees it. At 50% every level is 6 dB lower and the answer moves 6 dB. |
+| EQ | flat / off | EQ gain at 1 kHz changes the level directly. |
+| `DRC` switch | **off** for run 1 | |
+| `DRC Low Makeup` | 0 dB | |
+| `DRC Low Threshold` | −20 dB | for run 2 |
+| `DRC Low Ratio` | 2 | for run 2 |
+| `DRC Offset Convention` | Intercept | for run 2 |
+
+Put the UMIK-1 on a stand a metre or so in front of the speaker, pointed at it,
+and **do not move it or touch the volume again until both runs are done.**
+
+### C. Open REW's SPL meter
+
+REW → `Tools` menu → **SPL Meter**. Pick the UMIK-1 as the input and load its
+calibration file if you have it. Set weighting to **Z** (not A). You now have one
+big number on screen that tracks the level in the room. That number is all you
+need — no sweeps, no logging, no graphs.
+
+Play the file once with nothing running to check the number lands somewhere
+sensible: comfortably above the quiet-room reading, and not so loud the amp is
+straining.
+
+### D. Run 1 — DRC switch OFF
+
+Start the file playing:
+
+```yaml
+action: media_player.play_media
+target:
+  entity_id: media_player.speaker
+data:
+  media_content_id: http://homeassistant.local:8123/local/drc-simple.wav
+  media_content_type: music
+```
+
+The first eight seconds are a reference tone — ignore them. Then six plateaus
+follow, eight seconds each. **Write down the SPL number in the middle of each
+plateau**, once it has settled. Six numbers.
+
+| plateau | starts at | read at | Run 1 (DRC off) | Run 2 (DRC on) |
+|---|---|---|---|---|
+| −6 dBFS | 0:08 | 0:12 | | |
+| −12 dBFS | 0:16 | 0:20 | | |
+| −18 dBFS | 0:24 | 0:28 | | |
+| −24 dBFS | 0:32 | 0:36 | | |
+| −30 dBFS | 0:40 | 0:44 | | |
+| −36 dBFS | 0:48 | 0:52 | | |
+
+### E. Check run 1 before going on
+
+Subtract each number from the one above it. **All five gaps should be 6.0 dB**
+(±0.3 is fine — it's a room).
+
+If the top gaps are smaller than 6, the amp or speaker is compressing: turn the
+volume down and redo run 1. If the bottom gaps are smaller than 6, those
+plateaus are down in the room noise — ignore them and only use the ones above.
+
+Do not do run 2 until run 1 gives you a straight run of 6.0 dB gaps. A bad run 1
+means the measurement chain is lying and nothing from run 2 can be trusted.
+
+### F. Run 2 — DRC switch ON
+
+Turn the `DRC` switch on. Change nothing else. Play the same file, write down the
+same six numbers in the second column.
+
+### G. What the numbers mean
+
+Subtract again to get the five gaps.
+
+- Gaps of **6.0 dB** mean the compressor is doing nothing at those levels.
+- Gaps of **3.0 dB** mean it is compressing at exactly 2:1 — which is what was
+  asked for, and the result that closes this out.
+- Some other number means the ratio is `6.0 / gap`. A gap of 2.0 is really 3:1,
+  a gap of 1.5 is really 4:1.
+
+With the threshold at −20 dB you should see the change happen between the
+−18 dBFS and −24 dBFS plateaus: the loud end compressed, the quiet end not.
+
+Two more things fall out of the same six numbers:
+
+- **Where the change happens** tells you what the chip's detector measures. If
+  the −18 plateau is compressed and −24 is not, that's about right for a
+  threshold of −20. If the break sits noticeably lower than expected, the
+  detector is reading RMS rather than peak, and every threshold in the UI is
+  really 3 dB lower than it says.
+- **The quiet plateaus must match run 1's numbers**, not just each other's
+  spacing. If the −30 and −36 readings are (say) 10 dB below what run 1 gave for
+  the same plateaus, the DRC is quietly cutting level where it should be doing
+  nothing at all — which is the thing that was wrong with the piano track, and
+  worth knowing.
+
+Send me the two columns and I'll do the arithmetic and write it up.
+
+---
+
 ## 1. Make the signal
 
 ```
