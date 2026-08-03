@@ -670,6 +670,53 @@ Two other things the session established, both about method rather than the part
   They survive a clean build and reflash; only the entity set changing can
   invalidate them.
 
+#### Verified 2026-08-03 — the write path, by readback
+
+A register dump at threshold −35, ratio 2 returns all seven Low band
+coefficients bit-exact against what the code intends:
+
+| reg | read | decoded | |
+|---|---|---|---|
+| k0 | `0x00000000` | 0.00000 | |
+| k1 | `0xFFC00000` | −0.50000 | ratio 2, unscaled |
+| k2 | `0xFFC00000` | −0.50000 | |
+| t1 | `0xFA2FC6B8` | −11.62675 | −35 dB ÷ 10·log10 2, one LSB of rounding |
+| t2 | `0xFFD57AB5` | −0.33219 | |
+| off1 | `0x00000000` | 0.00000 | region 1 transparent |
+| off2 | `0xFE8BF1AE` | −2.90669 | −17.5 dB ÷ 20·log10 2 |
+
+So the write path is verified end to end, and everything still unexplained is the
+part's interpretation. It also kills the theory that `off2` was never arriving,
+which run 10's numbers had fitted to within 0.4 dB.
+
+#### Measured 2026-08-03, run 11 — compression 10 dB below the threshold
+
+Same settings as the dump above, on the 3 dB-step file. It compresses **uniformly
+across its whole range**: 1.53 dB per step above the nominal knee, 1.67 below,
+where transparent is 2.89. Compression continues a full 10 dB below the −35 dB
+threshold. The overall 1.571 dB/step gives ratio **1.84**, a third confirmation of
+the slope alongside 2.09 and 1.87.
+
+**This contradicts run 10**, which put the knee where a −20 dB threshold predicts
+and was transparent below it to 0.02 dB per step. No single threshold scale fits
+both — run 10 bounds it to 2.26–3.16 dB per unit, this run needs more than 3.87.
+
+**And the measurement is now the limiting factor, not the part.** Five error
+sources, all confirmed rather than suspected:
+
+| source | evidence |
+|---|---|
+| EQ re-enables on reboot | observed on the device; a constant 1 kHz offset |
+| speaker compresses above ~90 dB | run 1's end gaps, run 10's 95.8 dB |
+| reading resolution ~1 dB | 81, 79, 78, 75, 73, 72, 70 |
+| room floor 49 dB | caps how quiet the below-knee plateaus can go |
+| cross-session drift | 2.55 dB between the control and run 1 |
+
+At 3 dB steps the transparent-versus-2:1 difference is only 1.44 dB, inside that
+budget, so **3 dB steps were the wrong choice** — 6 dB steps are matched to what
+this rig resolves. Before fitting any more constants, the protocol needs
+tightening: see the RTA note in `docs/drc-measurement.md`.
+
 ---
 
 ## 4. The three-band trap

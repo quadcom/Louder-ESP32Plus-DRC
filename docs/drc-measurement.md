@@ -56,12 +56,25 @@ In Home Assistant, on the Speaker device page:
 Put the UMIK-1 on a stand a metre or so in front of the speaker, pointed at it,
 and **do not move it or touch the volume again until both runs are done.**
 
-### C. Open REW's SPL meter
+### C. Open REW's RTA and watch the 1 kHz bin
 
-REW → `Tools` menu → **SPL Meter**. Pick the UMIK-1 as the input and load its
-calibration file if you have it. Set weighting to **Z** (not A). You now have one
-big number on screen that tracks the level in the room. That number is all you
-need — no sweeps, no logging, no graphs.
+REW → `Tools` menu → **RTA**. Pick the UMIK-1 as the input and load its
+calibration file if you have it. Set a long averaging window (a high average
+count, or "Forever"). Read the height of the **1 kHz** bar at the middle of each
+plateau. That one number per plateau is the whole measurement — no sweeps, no
+logging, no exporting.
+
+**Use the RTA rather than the SPL Meter.** The RTA counts only energy in the 1 kHz
+bin, so broadband room noise stops mattering and the effective noise floor drops
+20–30 dB. That matters more than it sounds: with the SPL meter a 49 dB room floor
+put a hard limit on how quiet the plateaus could go, which distorted the bottom of
+every early run and forced an awkwardly quiet test file. The RTA also reads to
+0.1 dB where the SPL meter was being read to about 1 dB — and at 3 dB steps the
+whole difference between transparent and 2:1 is 1.44 dB, so that resolution was
+the difference between a result and a shrug.
+
+If you do fall back to the **SPL Meter**, set weighting to **Z** (not A), and treat
+any plateau within about 10 dB of the room floor as unusable.
 
 Play the file once with nothing running to check the number lands somewhere
 sensible: comfortably above the quiet-room reading, and not so loud the amp is
