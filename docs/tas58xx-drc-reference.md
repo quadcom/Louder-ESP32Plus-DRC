@@ -511,6 +511,63 @@ the ratio off their spacing directly.
 **And capture a DRC-off control in the same session as every future run**, given
 2.55 dB of drift turned up between two that were assumed comparable.
 
+#### Measured 2026-08-03, runs 6 and 7 — region 1 is fixed, the slope constant is not 2
+
+`off1 = 0`, `off2 = −k·T1`, ratio 2, makeup 0.
+
+**Run 6, threshold −20 dB — region 1 is transparent.** Against the ratio-1
+control:
+
+| plateau | run 6 | control | Δ | |
+|---|---|---|---|---|
+| −6 dBFS | 90.7 | 93.5 | −2.80 | above knee |
+| −12 dBFS | 86.2 | 87.6 | −1.40 | above knee |
+| −18 dBFS | 81.5 | 81.8 | **−0.30** | below knee |
+| −24 dBFS | 75.8 | 76.1 | **−0.30** | below knee |
+| −30 dBFS | 70.0 | 70.3 | **−0.30** | below knee |
+| −36 dBFS | 64.5 | 64.6 | **−0.10** | below knee |
+
+Below the knee the DRC is now transparent to 0.3 dB, against 9.2 dB of cut before.
+The 14 dB discontinuity is gone too — the gap across the knee is 4.7 dB, in line
+with the neighbouring 4.5 and 5.7. `off1` is settled.
+
+**Run 7, threshold −40 dB — the slope, at last.** With the knee at −40 dBFS RMS
+every plateau sits in region 2, so all five gaps measure the slope and nothing
+else. The whole run sat between 60 and 81 dB SPL, clear of the room floor and well
+below where the speaker compresses, which makes it the cleanest data in this file:
+
+| step | gap | implied ratio |
+|---|---|---|
+| −6 → −12 dBFS | 4.40 | 1.362 |
+| −12 → −18 dBFS | 4.11 | 1.459 |
+| −18 → −24 dBFS | 4.23 | 1.418 |
+| −24 → −30 dBFS | 4.29 | 1.400 |
+| −30 → −36 dBFS | 4.32 | 1.388 |
+| **mean** | **4.271 ± 0.098** | **1.405** |
+
+Asked for 2.000. So the slope acts, linearly and consistently, but at about
+70% of the requested strength:
+
+```
+output slope  0.7119   (want 0.5000)
+gain slope   -0.2881   (want -0.5000)   with k written as -0.2500
+⇒ 1.152 ± 0.065 dB of gain per dB of level, per unit of slope register
+```
+
+**The log2 model predicted 2.0 for that number.** It got the threshold and offset
+scales right and this one wrong, so the slope and offset domains are not related
+the way it claims. `DRC_SLOPE_GAIN_PER_UNIT = 1.152f` is therefore empirical and
+provisional — the least certain constant in the component, and the only one not
+derived from anything.
+
+Its own prediction is easy to check. At the corrected `k = −0.4340` the same run
+should give **3.00 dB** steps; the model's 2.0 would give 3.40, and no scaling at
+all 4.50. Those are far enough apart to separate at ±0.1 dB.
+
+Also worth noting what run 6 says about **makeup**: nothing yet. Every measurement
+so far has been at 0 dB. Once the ratio confirms, a run at some non-zero makeup
+would check that the mixer's `linear_db_to_f9_23` path is as clean as the rest.
+
 ---
 
 ## 4. The three-band trap

@@ -199,7 +199,7 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   // Everything above is in dB, which is the only sane way to reason about a
   // compressor. The registers are not: see the DB_PER_UNIT constants in the
   // header for the measurement that established the DSP's actual log domain.
-  const float slope_raw = slope / DRC_SLOPE_POWER_FACTOR;
+  const float slope_raw = slope / DRC_SLOPE_GAIN_PER_UNIT;
   const float t1_raw = t1_db / DRC_THRESHOLD_DB_PER_UNIT;
   const float t2_raw = t2_db / DRC_THRESHOLD_DB_PER_UNIT;
   const float off1_raw = off1_db / DRC_OFFSET_DB_PER_UNIT;
