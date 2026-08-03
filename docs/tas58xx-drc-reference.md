@@ -293,6 +293,65 @@ nothing at all there, so:
 
 Then confirm on loud material: peaks should pull down a few dB and nothing else.
 
+#### Measured 2026-08-03 — Intercept mutes the output
+
+First real measurement, per `docs/drc-measurement.md`: UMIK-1 on a stand, REW SPL
+meter, Z weighting, room noise floor 49 dB. 1 kHz stepped tone, six plateaus of
+6 dB. `drc_bands: 1`, threshold −20 dB, ratio 2, makeup 0 dB, Intercept.
+
+| plateau | Run 1, DRC off | gap | Run 2, DRC on | implied loss |
+|---|---|---|---|---|
+| −6 dBFS | 90.8 | | noise floor | ≥ 42.8 |
+| −12 dBFS | 85.3 | 5.5 | noise floor | ≥ 37.3 |
+| −18 dBFS | 79.4 | 5.9 | noise floor | ≥ 31.4 |
+| −24 dBFS | 73.6 | 5.8 | noise floor | ≥ 25.6 |
+| −30 dBFS | 67.5 | 6.1 | noise floor | ≥ 19.5 |
+| −36 dBFS | 62.0 | 5.5 | noise floor | ≥ 14.0 |
+
+Run 1 validates the chain: the middle three gaps average **5.93 dB** against a
+target of 6.00. The two end gaps are the low ones — speaker compression at the
+top (90.8 dB SPL), room noise at the bottom — so the trustworthy window is −12 to
+−30 dBFS, which brackets the threshold.
+
+Run 2 put **every plateau into the noise floor**, reading 49–51 dB against a 49 dB
+room. This is the same failure as the original report that the sound cut out, now
+with a number on it.
+
+Two things follow, and both contradict the model above:
+
+**No region is flat.** The −24, −30 and −36 plateaus are below the −20 dB
+threshold. Every convention predicts gain = 0 there, so they should have matched
+Run 1 exactly. They lost at least 14–26 dB. Whatever region the signal is in, it
+is the same region at −36 dBFS as at −6 dBFS — so the threshold comparison is not
+selecting regions the way the table above assumes.
+
+**The offset is being scaled up by at least 4.6×.** Take a single global
+`gain = k·x − A`. The loss is then `0.5x + A`, which is 15 dB greater at the −6
+plateau than at the −36 plateau; the measured lower bounds differ by 28.8 dB, so
+that shape is consistent. Burying every plateau needs `A ≥ 46 dB`. Intercept wrote
+`−k·T1 = −10`. So the offset registers are not in dB the way the thresholds are:
+
+```
+A_actual / A_intended ≥ 4.6
+```
+
+`db_to_f9_23` writes the dB figure straight into 9.23, which is right for
+thresholds — TI's own reset values decode exactly that way, `0xE7000000` = −50.0
+and `0xFE800000` = −3.0, both clean round dB. The offsets take the same encoding
+and evidently should not. **6.0206 dB per unit (log2) is the obvious suspect**,
+since a DSP tracking log2 of the level gets the exponent for free: it would make
+the −10 into −60.2 dB, and `k·x` would be unaffected because k is dimensionless.
+That last point is why every ratio-only change behaved sensibly while every
+attempt to add an offset overshot into silence. The measurement only bounds the
+scale from below, though — 10 and 20 are not yet excluded.
+
+**Next test, no rebuild needed:** convention `Zero`, everything else identical.
+That removes the offset entirely, leaving `gain = k·x`, which stays on the meter.
+If the plateaus below −20 dBFS match Run 1 and the ones above are boosted, the
+threshold works and only the offset scale is wrong. If all six are boosted with
+uniform 3.0 dB spacing and no break at −20, then `x` is not in dB either and the
+thresholds need the same scale factor.
+
 ---
 
 ## 4. The three-band trap
