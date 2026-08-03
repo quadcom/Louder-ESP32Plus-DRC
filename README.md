@@ -260,23 +260,35 @@ Verified on hardware — Louder ESP32-S3 Plus, TAS5825M, 2026-08-02:
   The first attempt wrote `off2 = k·(T2 − T1)`, the natural reading of SLOA148,
   and behaved as a constant −9.5 dB cut. See §3 of the reference doc for both
   results and the test that separates the three candidate conventions.
+- **The DSP's log domain is not dB.** Measured 2026-08-03 with a UMIK-1 and REW.
+  Three separate symptoms — a slope acting with exactly twice its authority
+  (+18.6 dB measured where +9.0 was predicted), an offset of −10 dB costing at
+  least 46 dB, and a −20 dB threshold that never engaged anywhere between −6 and
+  −36 dBFS — all follow from one model: the detector tracks `log2` of the mean
+  square and the gain returns as a power-of-two multiplier on amplitude, so
+  `gain_dB = 2·k·level_dB + 6.0206·O`. Thresholds are divided by `10·log10 2`,
+  offsets by `20·log10 2`, and the slope by 2. `k` being the only dimensionless
+  one of the three is why ratio-only changes always looked plausible while every
+  offset overshot into silence. §3 of the reference doc has the numbers.
 
 That establishes what the amp *stores*, and the shape of what it *does* with it.
 The remaining item needs an audio measurement, not a register dump.
 
 Not yet verified on hardware:
 
-1. **The K-slope ↔ compression-ratio mapping.** `k = 1/ratio − 1` comes from
-   SLOA148 §5.2 and is consistent with the documented defaults, but no
-   measurement confirms the *amount* of compression on this part.
-   **`docs/drc-measurement.md` is the procedure** — a stepped-level tone from
-   `tools/make_drc_staircase.py` plus REW and a measurement mic reads the ratio
-   and the knee straight off the plateau spacing, needing no calibration because
-   every fixed offset in the chain cancels.
+1. **The threshold scale, `10·log10 2`.** It comes from the log-domain model
+   rather than from observation, because no run has yet produced a knee to look
+   at — the pre-correction firmware put a −20 dB threshold at −60 dB, below
+   anything the test signal reached. **`docs/drc-measurement.md` is the
+   procedure**, and the knee position now reads this constant off directly: a
+   break at −10 dB instead of −20 means the divisor should be halved. The same
+   capture settles the **K-slope ↔ ratio mapping** from the plateau spacing, which
+   needs no calibration because every fixed offset in the chain cancels.
 2. ~~**The offset continuity convention.**~~ **Superseded 2026-08-02 — offsets
-   are y-intercepts, not curve values at the thresholds.** All three candidate
-   formulas are runtime-selectable through the **DRC Offset Convention** entity
-   so they can be compared by ear; `Intercept` is the default.
+   are y-intercepts, not curve values at the thresholds.** The runtime selector
+   that compared the three candidates was removed on 2026-08-03: two of them left
+   an offset at zero, which unanchors that region into a boost and tripped the
+   amp's protection twice.
 3. ~~**The 5825M crossover addresses.**~~ **Resolved 2026-08-02 — confirmed
    correct by readback on hardware.** See "What the readback found" below.
 

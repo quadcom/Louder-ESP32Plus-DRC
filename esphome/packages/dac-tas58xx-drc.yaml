@@ -116,36 +116,12 @@ select:
       name: EQ Mode
       id: tas58xx_eq_mode_select
 
-  # Which formula fills the two DRC offset registers. Diagnostic: the part's
-  # convention is still being pinned down by ear, and this makes that a
-  # three-second A/B instead of a rebuild and flash per hypothesis. Rewrites
-  # every band on change, so it takes effect while the track is playing.
-  #
-  # Options MUST stay in this order - the index is cast straight to
-  # DrcOffsetConvention in tas58xx_drc.h.
-  #
-  #   Intercept   gain = k*x + O, so O = -k*T1 places the knee at the threshold.
-  #               Current best fit, and the default.
-  #   Zero        both offsets at their documented reset value.
-  #   Continuity  O1 = 0, O2 = k*(T2 - T1). The original reading of SLOA148.
-  #
-  # Test with threshold -20dB, ratio 2, makeup 0dB, on quiet material whose RMS
-  # sits below -20dBFS. Only the correct convention is inaudible there.
-  - platform: template
-    name: DRC Offset Convention
-    id: drc_offset_convention
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    initial_option: Intercept
-    options:
-      - Intercept
-      - Zero
-      - Continuity
-    on_value:
-      - lambda: |-
-          id(external_dac)->set_drc_offset_convention(
-              static_cast<esphome::tas58xx::DrcOffsetConvention>(i));
+  # A "DRC Offset Convention" select used to sit here while the part's offset
+  # convention was being established. It is gone: the offsets are settled (see
+  # the offsets note in tas58xx_drc.h), and two of its three options left an
+  # offset at zero, which unanchors that region into a boost loud enough to trip
+  # the amp's protection. If you are upgrading and the entity lingers in Home
+  # Assistant, delete it under Settings -> Devices & services -> Entities.
 
 number:
   - platform: tas58xx

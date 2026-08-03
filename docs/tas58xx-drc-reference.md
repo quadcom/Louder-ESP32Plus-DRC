@@ -262,10 +262,13 @@ O1 = O2 = -k · T1        threshold -20, ratio 2  ->  -10 dB
 | 2 | T1 ≤ x < T2 | `k · x - k · T1` → 0 dB at T1 |
 | 3 | x ≥ T2 | same line, so continuous through T2 |
 
-**All three conventions are runtime-selectable** via the `DRC Offset Convention`
-select entity (`DrcOffsetConvention` in `tas58xx_drc.h`), because settling this
-by ear one rebuild at a time was costing a flash cycle per hypothesis. Intercept
-is the default.
+For a while all three candidate conventions were runtime-selectable via a
+`DRC Offset Convention` select entity, because settling this by ear one rebuild at
+a time was costing a flash cycle per hypothesis. **That selector is gone as of
+2026-08-03.** Two of its three options left an offset at zero, and under
+`gain = k·x + O` a zero offset unanchors its region into a boost of `−k·x` — which
+tripped the amp's protection twice on the bench. Intercept is now the only
+behaviour, computed unconditionally.
 
 One loose end. The intercept model predicts region 1 is flat regardless of the
 offsets, so it does **not** explain the original quiet-piano loss — under

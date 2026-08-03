@@ -100,25 +100,6 @@ bool Tas58xxComponent::set_drc_makeup(DrcBand band, float makeup_db) {
   return this->apply_drc_mixer_();
 }
 
-bool Tas58xxComponent::set_drc_offset_convention(DrcOffsetConvention convention) {
-  if (convention >= NUMBER_DRC_OFFSET_CONVENTIONS) {
-    ESP_LOGE(TAG, "Invalid DRC offset convention: %u", static_cast<unsigned>(convention));
-    return false;
-  }
-
-  this->drc_offset_convention_ = convention;
-  ESP_LOGI(TAG, "DRC offset convention: %s", DRC_OFFSET_CONVENTION_TEXT[convention]);
-
-  // Offsets are only written while the DRC is on; bypass zeroes them outright.
-  if (this->loop_setup_stage_ < DRC_SETUP || !this->drc_enabled_) return true;
-
-  bool ok = true;
-  for (uint8_t band = 0; band < NUMBER_DRC_BANDS; band++) {
-    if (!this->apply_drc_band_(static_cast<DrcBand>(band))) ok = false;
-  }
-  return ok;
-}
-
 bool Tas58xxComponent::set_drc_enable(bool enable) {
   this->drc_enabled_ = enable;
 
@@ -192,28 +173,15 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   const float t2_db = DRC_T2_DB;
   const float slope = ratio_to_slope(s.ratio);
 
-  // The offsets are the open question on this part. Each convention is defined
-  // and justified on DrcOffsetConvention in tas58xx_drc.h; the selector exists
-  // so all three can be compared by ear without a rebuild.
-  float off1_db = 0.0f;
-  float off2_db = 0.0f;
-
-  switch (this->drc_offset_convention_) {
-    case DRC_OFFSET_INTERCEPT:
-      // The offset is the y-intercept of gain = k*x + O, so it is what puts the
-      // knee at T1. Both regions get the same value because they share a slope,
-      // which makes the line continuous through T2.
-      off1_db = -slope * t1_db;
-      off2_db = -slope * t1_db;
-      break;
-
-    case DRC_OFFSET_ZERO:
-      break;  // already zero
-
-    case DRC_OFFSET_CONTINUITY:
-      off2_db = slope * (t2_db - t1_db);
-      break;
-  }
+  // The offset is the y-intercept of gain = k*x + O, so it is what puts the knee
+  // at T1 - the part does not subtract the threshold itself. Both regions above
+  // the knee get the same value because they share a slope, which makes the line
+  // continuous through T2. See the offsets note in tas58xx_drc.h.
+  //
+  // Neither offset may be left at zero: that unanchors its region into a boost
+  // of -k*x, which is loud enough to trip an amp's protection.
+  const float off1_db = -slope * t1_db;
+  const float off2_db = -slope * t1_db;
 
   // Ascending address order, matching how the biquad blocks must be written.
   bool ok = true;
@@ -253,10 +221,10 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   // Both the dB intent and the DSP units go in the log, so a measurement can be
   // checked against what was actually written without decoding a register dump.
   ESP_LOGD(TAG, "Set %s band DRC: %.1fdB %.1f:1 attack %.1fms release %.0fms "
-                "(k=%.4f offsets=%s off1=%.2fdB off2=%.2fdB) "
+                "(k=%.4f off1=%.2fdB off2=%.2fdB) "
                 "raw: k=%.4f t1=%.4f t2=%.4f off1=%.4f off2=%.4f",
            DRC_BAND_TEXT[band], t1_db, s.ratio, s.attack_ms, s.release_ms, slope,
-           DRC_OFFSET_CONVENTION_TEXT[this->drc_offset_convention_], off1_db, off2_db,
+           off1_db, off2_db,
            slope_raw, t1_raw, t2_raw, off1_raw, off2_raw);
   return true;
 }

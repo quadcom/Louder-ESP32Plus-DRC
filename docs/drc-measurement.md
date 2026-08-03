@@ -52,7 +52,6 @@ In Home Assistant, on the Speaker device page:
 | `DRC Low Makeup` | 0 dB | |
 | `DRC Low Threshold` | −20 dB | for run 2 |
 | `DRC Low Ratio` | 2 | for run 2 |
-| `DRC Offset Convention` | Intercept | for run 2 |
 
 Put the UMIK-1 on a stand a metre or so in front of the speaker, pointed at it,
 and **do not move it or touch the volume again until both runs are done.**
@@ -232,8 +231,8 @@ Where it isn't, the fault is not the DRC:
 Do not proceed until you have a straight run of plateaus at 3.00 dB. Anything you
 measure with the DRC on is only trustworthy across that range.
 
-**Run 2 — DRC on.** Threshold −20 dB, ratio 2, makeup 0 dB, offset convention
-**Intercept**. Same file, same everything else.
+**Run 2 — DRC on.** Threshold −20 dB, ratio 2, makeup 0 dB. Same file, same
+everything else.
 
 ## 5. Read it
 
@@ -282,14 +281,14 @@ Cheap additions, since the rig is already together:
   agreeing is much stronger evidence than one.
 - **Threshold −10 with ratio 2.** The knee should move up by exactly 10 dB and
   the spacing should not change.
-- **`Continuity` convention.** Switch the `DRC Offset Convention` entity and
-  repeat; it should differ from `Intercept` by a constant.
-
-  > **Do not use `Zero`.** It sets the offset to zero, which leaves `gain = k·x` —
-  > a boost that grows as the signal gets quieter, reaching 0 dBFS output at every
-  > input level. On 2026-08-03 it clipped the amp and tripped protection during
-  > the lead-in tone, at a measured +18.6 dB. It exists only as a diagnostic and
-  > has now served its purpose: that boost is what identified the doubled slope.
+> **The `DRC Offset Convention` select no longer exists.** Two of its three
+> options left an offset at zero, which leaves `gain = k·x` — a boost that grows
+> as the signal gets quieter and reaches full scale at every input level. `Zero`
+> tripped the amp's protection twice on 2026-08-03, once at a measured +18.6 dB.
+> It earned its keep on the way out: that boost is what revealed the doubled
+> slope. The offsets are settled now and computed unconditionally, so if the
+> entity still appears in Home Assistant after a flash, delete it under
+> *Settings → Devices & services → Entities*.
 - **Attack and release.** The step transitions are level steps of known size, so
   the settling time at each edge is the real time constant. That checks
   `α = 1/(fs·τ)` and, with it, whether `fs` is really 96 kHz — an 88.2 kHz DSP
