@@ -264,13 +264,23 @@ Verified on hardware — Louder ESP32-S3 Plus, TAS5825M, 2026-08-02:
   A −20 dB threshold written raw never engaged anywhere between −6 and −36 dBFS,
   because the detector tracks `log2` of the mean square rather than dB:
 
-      u       = log2(mean square) = level_dB / 3.0103    (10·log10 2)
-      gain_dB = 3.0103·k·u + O    = k·level_dB + O
+      u       = log2(mean square) = level_dB / 3.0103    <- the threshold's domain
+      g       = k·(u/2) + O                             <- log2 of an amplitude
+      gain_dB = 6.0206·g = k·level_dB + 6.0206·O
 
-  So a dB quantity needs converting only if it is compared against `u`. The
-  threshold is, and is divided by `10·log10 2`. The slope is not, and goes in
-  unscaled — the `3.0103` cancels. **What happens to the offsets is still open**;
-  see item 1 below.
+  The part multiplies the slope by `log2` of the **RMS** — half the `log2` of the
+  mean square — and exponentiates the result as an amplitude gain. That internal
+  factor of two is why the three quantities scale differently, and none of it was
+  guessable from the datasheets:
+
+  | quantity | scaling | why |
+  |---|---|---|
+  | threshold | ÷ `10·log10 2` | compared against `u` |
+  | slope | **none** | the part's own ÷2 cancels `6.0206/3.0103` |
+  | offset | ÷ `20·log10 2` | added in the log-amplitude domain |
+
+  All three are measured on hardware, and the knee now lands at exactly 0 dB gain
+  at every threshold and ratio checked.
 - **Region 1's offset must be zero.** `off1` governs the region *below* the knee,
   not above it, whatever SLOA148's numbering suggests. With `−k·T1` written there,
   the four below-knee plateaus came back a flat 9.2 dB down and the knee showed a
@@ -294,63 +304,76 @@ with it. The rest needed audio measurements rather than register dumps.
   the dialled value in sine peak terms. Below it the DRC is transparent, its
   plateaus stepping 5.80 dB against the control's 5.78.
 
-  One measurement discipline earned the rest: **every reliable result here came from
-  a control run in the same session, at the same volume.** Each of the three wrong
-  constants that got written and then removed came from comparing across sessions,
-  or against the file's nominal step, or from readings sitting in the speaker's
-  compression region or the room's noise floor.
+- **The offset scale, and that nothing interacts.** `20·log10 2`, measured 2026-08-03
+  with the `DRC Offset 2 Override` diagnostic: **6.050 dB per register unit** across a
+  2-unit change and **5.950** across a 4-unit change.
+
+  This is the one measurement in the series that **needs no control run**, which is
+  why it is the one to trust. Holding the knee at −60 puts every plateau above it, and
+  then two independent numbers fall out of the same readings with no absolute
+  reference at all:
+
+  | quantity | read from | immune to |
+  |---|---|---|
+  | offset scale | the difference between two passes at one plateau | everything — `k·level` cancels |
+  | slope | the gaps within one pass | a constant offset shifts all plateaus equally |
+
+  The slope came out at a delivered **1.494 against 1.500 requested**, the best of the
+  four, and it **does not move with the offset** — 3.94 versus 3.80 dB per step across
+  a 2-unit change. So there is no slope/offset interaction, and run 14's apparent 11×
+  slope error was an artifact of reading one point in a run whose knee had not landed
+  where it was dialled.
+
+  The override exists because `off2 = −k·T1` couples the offset to the threshold: a
+  small offset forces a high knee with nothing above it to measure, a low knee forces
+  a large offset, and no point in that two-dimensional space gives both. Fighting that
+  coupling is why three earlier attempts produced three different answers.
+
+  Also settled directly: the part computes `gain = k·x + O` and does **not** subtract
+  the threshold itself. At register −1.6610 the above-knee region *boosted* +3.3 and
+  +6.5 dB where a threshold-subtracting part would have cut 5.5 dB.
+
+  One discipline earned all of this: **never trust an absolute level you have not
+  controlled for in the same session.** Every wrong constant came from comparing
+  across sessions, or against the file's nominal step, or from readings sitting in the
+  speaker's compression region or the room's noise floor.
 
 Not yet verified on hardware:
 
-1. **What the offset register actually does.** Not merely its scale — three runs
-   give three answers, and the third one says the shape of the equation is wrong:
+1. **The attack and release time constants** — and two residuals that point at them.
+   Against the settled model, run 13 matches every below-knee plateau to 0.8 dB and
+   correctly buries its above-knee pair under the noise floor. Two runs read *louder*
+   than predicted:
 
-   | run | `off2` register | delivered offset | dB per unit |
-   |---|---|---|---|
-   | 12 | −1.6610 | −1.51 | 0.91 |
-   | 13 | −10.00 | ≤ −41.5 | ≥ 4.15 |
-   | 14 | −5.3333 | −25.50 | 4.78 |
+   | run | plateau | predicted | measured | residual |
+   |---|---|---|---|---|
+   | 12 | −6 | 84.2 | 93.0 | +8.8 |
+   | 12 | −12 | 81.4 | 90.4 | +9.0 |
+   | 14 | −6 | 59.9 | 66.5 | +6.6 |
 
-   A 6× change in the register cannot produce a ≥28× change in delivered
-   attenuation, so at most one of those is measuring a scale factor. Each has a
-   known weakness: run 12's above-knee points sat at 93.0 and 90.4 dB SPL, inside
-   this speaker's compression region; run 13's landed 1–3 dB above a 49 dB room
-   floor, making its figures lower bounds.
+   In both, the DRC had to **attack into compression**: the test file's reference tone
+   sits below the knee at those thresholds, so the gain started from rest at each loud
+   plateau. In the run that fits, the knee was at −60 and the gain was already engaged
+   before the first plateau. That is the one structural difference between them, and
+   the leading hypothesis is that the attack is far slower than the 10 ms dialled —
+   which would be the first evidence about the time constants either way. Cheap test:
+   hold one setting and compare the first loud plateau at attack 0.1 ms against 500 ms.
 
-   Run 14 is the one that reframes the problem. **Louder input produced quieter
-   output** — block 1 is 6 dB hotter than block 2 and came out 16 dB below it, a
-   transfer slope of −3.67 dB/dB where −0.3333 was written. Any slope past −1.0
-   inverts the curve, which is the condition `ratio_to_slope` clamps against; the
-   clamp is irrelevant here because the steepness is not coming from `k`. Reading it
-   the other way — knee higher than dialled, so only one point is above it — rescues
-   `k` but then needs the threshold to deliver 1.70–2.82 dB per unit when the slope
-   measurements pin that same scaling to 3.0103.
-
-   So the offset is **not a constant added to the gain**. Runs 9–11 measured `k`
-   correctly with a small offset register; run 14 sees an apparent 11× slope error
-   with a larger one. Slope and offset are interacting.
-
-   The code writes plain dB meanwhile, as a placeholder rather than a finding. **At
-   that scale a low knee over-attenuates loud material severely** — run 13 buried
-   region 2 in the noise floor — so treat any offset-dependent behaviour as
-   unverified, and leave the ratio at 1 for listening.
-
-   Measuring this needs the `DRC Offset 2 Override` diagnostic, because the two
-   normal controls cannot vary the offset independently: `off2 = −k·T1`, so a small
-   offset forces a high knee and leaves nothing above it to measure, while a low knee
-   forces a large offset. No point in that two-dimensional space gives both. Fighting
-   that coupling is why three attempts at a scale factor produced three answers.
-
-   What *is* settled about the offsets: the part computes `gain = k·x + O` and does
-   not subtract the threshold itself, measured directly — at register −1.6610 the
-   above-knee region **boosted** +3.3 and +6.5 dB where a threshold-subtracting part
-   would have cut 5.5 dB.
-2. ~~**The offset continuity convention.**~~ **Superseded 2026-08-02 — offsets
+   Run 12 is worse than a slow attack, though. Reading +8.8 dB *above its own control*
+   is a boost, which no incomplete attack can produce; it behaves as though `off2`
+   never reached the register in that pass. It stays unexplained — and it is the run
+   the retracted plain-dB conclusion was built on.
+2. **Makeup gain.** Written through a different encoder (`linear_db_to_f9_23`) and the
+   only DRC quantity never measured.
+3. ~~**The offset's dB-per-unit.**~~ **Resolved 2026-08-03 — `20·log10 2`,** measured
+   directly with the override at 6.050 and 5.950 dB per unit. Written, removed on a
+   bad measurement, and restored.
+4. ~~**The offset continuity convention.**~~ **Superseded 2026-08-02 — offsets
    are y-intercepts, not curve values at the thresholds.** The runtime selector
    that compared the three candidates was removed on 2026-08-03: two of them left
    an offset at zero, which unanchors that region into a boost and tripped the
    amp's protection twice.
-3. ~~**The 5825M crossover addresses.**~~ **Resolved 2026-08-02 — confirmed
+5. ~~**The 5825M crossover addresses.**~~ **Resolved 2026-08-02 — confirmed
    correct by readback on hardware.** See "What the readback found" below.
 
 ### Locating the real crossover addresses

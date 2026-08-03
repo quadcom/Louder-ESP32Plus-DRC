@@ -218,19 +218,20 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   if (!this->write_drc_coefficient_(addr.decay.page, addr.decay.sub_addr,
                                     time_constant_to_f1_31(s.release_ms, this->drc_dsp_rate_))) ok = false;
 
-  // The thresholds change units on the way to the registers, being compared
-  // against log2 of the mean square; the slope does not, because that scaling
-  // cancels. The offsets are written as plain dB, which is a PLACEHOLDER - two
-  // runs disagree about their dB-per-unit by a factor of four and the open
-  // question is recorded in the header. At this scale a low knee over-attenuates
-  // loud material badly (measured: region 2 buried in the noise floor at knee -20,
-  // ratio 2), so treat any offset-dependent behaviour as unverified.
+  // Three quantities, three different scalings, all measured. The thresholds are
+  // compared against log2 of the mean square; the offsets are added in the
+  // log-amplitude domain, an octave away; the slope needs nothing, because the
+  // part's own factor of two cancels the difference. See the header.
   const float slope_raw = slope;
   const float t1_raw = t1_db / DRC_THRESHOLD_DB_PER_UNIT;
   const float t2_raw = t2_db / DRC_THRESHOLD_DB_PER_UNIT;
-  const float off1_raw = off1_db;
+  const float off1_raw = off1_db / DRC_OFFSET_DB_PER_UNIT;
+
+  // The override is a raw register value, so it is deliberately not scaled - that
+  // is the whole point of it.
   const bool off2_overridden = this->drc_off2_override_ <= 0.0f;
-  const float off2_raw = off2_overridden ? this->drc_off2_override_ : off2_db;
+  const float off2_raw = off2_overridden ? this->drc_off2_override_
+                                         : off2_db / DRC_OFFSET_DB_PER_UNIT;
 
   // Region 1 is below the knee and must stay unity. A zero slope needs no
   // scaling, but it goes through the same conversion so the three reads alike.

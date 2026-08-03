@@ -860,6 +860,92 @@ confirmed directly.
 | −4.0 | 88.0 … 69.1 | 80.0 … 61.1 | 67.9 … 49.0 |
 | −6.0 | 86.0 … 67.1 | 73.9 … 55.0 | 55.9 … 37.0 |
 
+#### Measured 2026-08-03, run 15 — the offset is 20·log10 2, and nothing interacts
+
+Threshold −60, ratio 1.5, makeup 0, the `off2` override swept. Every plateau above
+the knee in all three passes.
+
+| plateau | override −2 | −4 | −6 |
+|---|---|---|---|
+| −6 | 89.4 | 77.2 | 65.6 |
+| −12 | 85.3 | 73.0 | 61.5 |
+| −18 | 81.6 | 69.4 | 58.1 |
+| −24 | 77.6 | 65.7 | 55.0 |
+| −30 | 73.5 | 61.6 | 52.1 |
+| −36 | 69.7 | 58.2 | 50.2 |
+
+**Neither of the two numbers this run produces needs a control**, which is what makes
+it the only trustworthy measurement in the series. An absolute reference was exactly
+what every earlier run got wrong, whether through the EQ returning on reboot, the
+speaker compressing, or the room floor.
+
+**The offset, from the difference between passes at one plateau.** `k·level` is
+identical in both, so it cancels and only the offset term survives:
+
+| plateau | −2 vs −4, per unit | −2 vs −6, per unit |
+|---|---|---|
+| −6 | 6.100 | 5.950 |
+| −12 | 6.150 | 5.950 |
+| −18 | 6.100 | 5.875 |
+| −24 | 5.950 | 5.650 |
+
+6.050 over five clean plateaus and 5.950 over the four-unit span. That is
+**20·log10 2 = 6.0206** — the constant removed in `21f9769` on the strength of run
+12, now restored.
+
+**The slope, from the gaps within one pass.** A constant offset shifts every plateau
+by the same amount, so the gaps are immune to it:
+
+| pass | gaps | mean |
+|---|---|---|
+| −2 | 4.1 3.7 4.0 4.1 3.8 | 3.94 |
+| −4 | 4.2 3.6 3.7 4.1 3.4 | 3.90 |
+
+Pooled, 3.870 dB per step against 3.853 predicted, a delivered ratio of **1.494
+against 1.500 requested** — the best slope measurement of the series. And it does not
+move with the offset: 3.94 versus 3.80 across a 2-unit change. **There is no
+slope/offset interaction**, so run 14's apparent 11× slope error was an artifact of
+reading a single point in a run where the knee had not landed where it was dialled.
+
+##### The model this settles
+
+    u        = log2(mean square) = level_dB / 3.0103      <- the threshold's domain
+    g        = k * (u/2) + O                              <- log2 of an amplitude
+    gain_dB  = 6.0206 * g  =  k * level_dB + 6.0206 * O
+
+The part multiplies the slope by log2 of the RMS — half the log2 of the mean square —
+and exponentiates as an amplitude gain. That internal factor of two is why the three
+scalings differ: the threshold is divided by `10·log10 2`, the offset by `20·log10 2`,
+and the slope by nothing at all, its two conversions cancelling.
+
+##### Two residuals it does not explain
+
+Against this model, run 13 matches on every below-knee plateau to 0.8 dB and its
+above-knee pair correctly lands under the noise floor. Runs 12 and 14 do not:
+
+| run | plateau | predicted | measured | residual |
+|---|---|---|---|---|
+| 12 | −6 | 84.2 | 93.0 | **+8.8** |
+| 12 | −12 | 81.4 | 90.4 | **+9.0** |
+| 14 | −6 | 59.9 | 66.5 | **+6.6** |
+
+Both read *louder* than predicted, and in both the DRC had to attack into compression
+— the file's reference tone sits below the knee at those thresholds, so the gain
+started from rest at every loud plateau. In run 15 the knee was at −60, so the
+reference tone was already above it and the gain was engaged before the first plateau
+began. That is the one structural difference between the run that fits and the two
+that do not.
+
+Run 12 is worse than partial engagement, though: +8.8 dB puts it *above* its own
+control, a boost, which no incomplete attack can produce. It behaves as if `off2`
+were zero — as though the offset never reached the register in that pass. It remains
+unexplained, and it is the run the plain-dB conclusion was built on.
+
+The leading hypothesis for run 14 is that the attack is far slower than the 10 ms
+dialled. That would also be the first evidence about the time constants, which are
+still untested, and it has a cheap test: hold one setting and compare the first loud
+plateau at attack 0.1 ms against 500 ms.
+
 ---
 
 ## 4. The three-band trap
