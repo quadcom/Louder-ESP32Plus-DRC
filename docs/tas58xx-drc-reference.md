@@ -398,11 +398,59 @@ ships them with every slope at zero, so they never had to be correct in dB. In
 the log2 reading they are a threshold at −150 dB (never reached) and one at
 −9.03 dB. The measurement outranks the inference.
 
-**Still unmeasured:** the threshold scale, `10·log10 2`. It is derived from the
-model rather than observed, because no run has yet produced a knee. The
-corrected firmware makes that directly readable — the knee position is now the
-one thing left to check, and `gain` can no longer go positive, so it is safe to
-measure at normal listening levels.
+#### Measured 2026-08-03, run 4 — a knee, in the right place
+
+Same rig, corrected firmware, threshold −20 dB, ratio 2, makeup 0. The debug log
+confirms the writes landed exactly as intended:
+
+```
+Set Low band DRC: -20.0dB 2.0:1 attack 10.0ms release 200ms
+  (k=-0.5000 off1=-10.00dB off2=-10.00dB)
+  raw: k=-0.2500 t1=-6.6439 t2=-0.3322 off1=-1.6610 off2=-1.6610
+```
+
+so everything below is the part's interpretation, not an encoding slip.
+
+| plateau (peak) | RMS | Run 1 off | run 4 | gap | gain, noise-corrected |
+|---|---|---|---|---|---|
+| −6 dBFS | −9.01 | 90.8 | 90.6 | | −0.20 |
+| −12 dBFS | −15.01 | 85.3 | 86.2 | 4.40 | +0.90 |
+| −18 dBFS | −21.01 | 79.4 | 72.2 | **14.00** | −7.22 |
+| −24 dBFS | −27.01 | 73.6 | 66.7 | 5.50 | −6.96 |
+| −30 dBFS | −33.01 | 67.5 | 61.0 | 5.70 | −6.72 |
+| −36 dBFS | −39.01 | 62.0 | 56.0 | 5.00 | −6.74 |
+
+**The threshold works, and it is RMS-referenced.** A 14 dB step between the −12
+and −18 plateaus, against a 6 dB input step, is a knee — the first one this part
+has ever shown. It sits between −15.01 and −21.01 dBFS RMS, which brackets the
+−20 dB that was dialled in. So `DRC_THRESHOLD_DB_PER_UNIT = 3.0103` is right, and
+the detector measures RMS: for a sine the knee appears 3.01 dB above the
+threshold in peak terms, at −17 dBFS.
+
+**Region 1's slope is right, its offset is not.** Below the knee the gain must be
+zero and instead it is a flat cut. Corrected for the 49 dB room floor the four
+plateaus give −7.22, −6.96, −6.72, −6.74 — constant within 0.5 dB over 18 dB of
+input, which confirms `k0 = 0` is landing. A constant is an offset, so **off1 is
+being applied to the region below the knee**, where the code assumes no offset
+applies at all. That also accounts for the 14 dB knee: about 7 dB of it is this
+cut, and the rest is the genuine step.
+
+**The offset scale is not `20·log10 2` either.** `off1 = −1.6610` raw was meant to
+be −10.00 dB and measures −6.91, giving **≈4.16 dB per unit**, not 6.0206. That is
+also consistent with run 2 burying the staircase, but is not a clean constant, and
+6 plateaus of SPL cannot resolve it further.
+
+Above the knee there are only two plateaus, and the −6 dBFS one is where the
+speaker itself compresses, so the slope there is not yet measured. With
+`S = 4.16` the −12 plateau predicts +0.6 dB against +0.9 observed, which is
+encouraging and nothing more.
+
+**Next:** threshold **−2 dB**, ratio 2, everything else unchanged. That puts the
+knee above full scale, so all six plateaus fall below it and give six readings of
+one constant, with an offset ten times smaller (−1.00 dB, `−0.1661` raw). If the
+cut drops from ~6.9 dB to **~0.69 dB** the offset is confirmed as the cause and
+the scale falls out of the 10:1 lever arm. Region 1's slope being zero makes that
+run boost-free, so it is safe at normal levels.
 
 ---
 
