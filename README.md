@@ -42,7 +42,10 @@ esphome/
   louder-esp32-plus-drc.yaml           ESP32, amp only - compile check target
   packages/dac-tas58xx-drc.yaml        DAC + DRC package, for the ESP32 configs
 docs/tas58xx-drc-reference.md     verified register maps and coefficient math
+docs/drc-measurement.md           measuring the real curve with REW + a UMIK-1
+docs/ha-dashboard-drc.yaml        dashboard card with the bands separated
 tools/drc_math_check.py           checks the math against TI's constants
+tools/make_drc_staircase.py       stepped-level test tone for the measurement
 tools/cpp_check/run.py            checks the shipping C++ against that math
 reference/                        upstream repos, for reference only
 ```
@@ -265,8 +268,11 @@ Not yet verified on hardware:
 
 1. **The K-slope ↔ compression-ratio mapping.** `k = 1/ratio − 1` comes from
    SLOA148 §5.2 and is consistent with the documented defaults, but no
-   measurement confirms the *amount* of compression on this part. Sweep input
-   level, measure gain reduction, compare against the requested ratio.
+   measurement confirms the *amount* of compression on this part.
+   **`docs/drc-measurement.md` is the procedure** — a stepped-level tone from
+   `tools/make_drc_staircase.py` plus REW and a measurement mic reads the ratio
+   and the knee straight off the plateau spacing, needing no calibration because
+   every fixed offset in the chain cancels.
 2. ~~**The offset continuity convention.**~~ **Superseded 2026-08-02 — offsets
    are y-intercepts, not curve values at the thresholds.** All three candidate
    formulas are runtime-selectable through the **DRC Offset Convention** entity
