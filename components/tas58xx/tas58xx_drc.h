@@ -298,23 +298,22 @@ static constexpr float DRC_T2_DB            =  -1.0f;
 // A -20 dB threshold written raw put the knee at -60 dB, which is why the whole
 // staircase sat in one region and nothing was ever flat.
 //
-// The threshold and offset scales survived measurement. The slope factor did not:
-// the model predicts 2.0, and with every plateau held above the knee (threshold
-// -40 dB, ratio 2, k written as -0.2500) five consecutive 6 dB input steps came
-// out 4.271 +/- 0.098 dB apart. That is a gain slope of -0.288 per dB of level,
-// so one unit of the slope register buys 1.152 +/- 0.065 dB of gain per dB of
-// level, not 2. The measurement is sound - that run sat between 60 and 81 dB SPL,
-// clear of both the room floor and the level where the speaker compresses - so
-// the model is simply wrong about this one relationship, and the slope and offset
-// domains are not related the way it claims.
+// The threshold scale survived measurement, confirmed by where the knee lands.
+// The slope factor did not, and neither did its supposed derivation:
 //
-// 1.152 is therefore empirical and provisional, not a derived constant, and it is
-// the least certain number here. Its own prediction is easy to check: at the
-// corrected value the same run should give 3.00 dB steps, where the model's 2.0
-// would give 3.40 and no scaling at all would give 4.50.
+// Two runs held every plateau above the knee (threshold -40 dB, ratio 2) so the
+// gaps between plateaus measured the slope and nothing else. Read against a
+// transparent control run rather than against the file's nominal step, they give
+// 1.093 and 0.989 dB of gain per dB of level per unit of slope register. That is
+// 1.0, so **k = 1/ratio - 1 goes to the register unscaled**, exactly as SLOA148
+// says, and the factor of two this code briefly carried was never real.
+//
+// Reading against the control is the part that matters. The test file steps
+// 6.00 dB and the room delivers 5.78, so dividing by the nominal 6.00 inflates
+// every slope estimate by 4% - which is where an earlier "1.152" came from.
+// Nothing about the part.
 static constexpr float DRC_THRESHOLD_DB_PER_UNIT = 3.0103f;  // 10*log10 2, knee position
-static constexpr float DRC_OFFSET_DB_PER_UNIT    = 6.0206f;  // 20*log10 2, knee step
-static constexpr float DRC_SLOPE_GAIN_PER_UNIT   = 1.152f;   // measured, see above
+static constexpr float DRC_OFFSET_DB_PER_UNIT    = 6.0206f;  // 20*log10 2, provisional
 
 static constexpr float DRC_RATIO_MIN        =   1.0f;   // 1:1 = no compression
 static constexpr float DRC_RATIO_MAX        =  20.0f;   // approaching a limiter

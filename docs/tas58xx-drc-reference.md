@@ -568,6 +568,58 @@ Also worth noting what run 6 says about **makeup**: nothing yet. Every measureme
 so far has been at 0 dB. Once the ratio confirms, a run at some non-zero makeup
 would check that the mixer's `linear_db_to_f9_23` path is as clean as the rest.
 
+#### Measured 2026-08-03, run 8 — the slope needs no scaling
+
+Threshold −40 dB, ratio 2, `k = −0.4340` written. Mean gap **3.30 dB** against
+run 7's 4.20, so the ratio moved from 1.38 to **1.78 ± 0.10**.
+
+**Read gaps against the control, never against the file's nominal step.** The
+staircase steps 6.00 dB and this room delivers **5.78**. Dividing by 6.00 inflates
+every slope estimate by 4%, and that — not the part — is where the previous
+entry's `1.152` came from. Corrected:
+
+| run | k written | mean gap | ratio vs control | dB gain per dB level, per unit |
+|---|---|---|---|---|
+| 7 | −0.2500 | 4.20 | 1.377 ± 0.011 | 1.093 |
+| 8 | −0.4340 | 3.30 | 1.778 ± 0.102 | 0.989 |
+
+Two independent runs, an octave apart in `k`, both give **1.0**. So
+`k = 1/ratio − 1` goes to the register **unscaled**, exactly as SLOA148 says, and
+neither the factor of 2 nor the 1.152 was ever real. At `k = −0.5` the predicted
+gap is 2.89 dB, i.e. ratio 2.00.
+
+**A new problem, visible only in the absolute levels.** Run 8's gain against the
+control, with the threshold at −40 dBFS RMS:
+
+| plateau | RMS | gain |
+|---|---|---|
+| −6 dBFS | −9.01 | −7.40 |
+| −12 dBFS | −15.01 | −4.80 |
+| −18 dBFS | −21.01 | −2.10 |
+| −24 dBFS | −27.01 | −0.10 |
+| −30 dBFS | −33.01 | **+3.00** |
+| −36 dBFS | −39.01 | **+5.00** |
+
+The −36 dBFS plateau sits 0.99 dB above the threshold, where the gain must be
+essentially zero. It is **+5.0 dB**. The offset is under-anchoring badly: −20.00 dB
+was asked for and roughly −11.6 dB arrived.
+
+Worse, the offset scale is not constant. `off = −1.6610` produced 9.2–10.5 dB in
+runs 4 and 6; `off = −3.3219` produces about 11.6 dB here. Doubling the register
+bought 26% more effect, so **no single dB-per-unit constant can anchor the knee at
+every threshold**, and `DRC_OFFSET_DB_PER_UNIT` is downgraded to provisional.
+
+**The measurement that isolates it:** threshold −20 and threshold −40 at the same
+ratio on the same firmware. The slope term is then identical between the two runs
+and only the offset differs — by −10.00 dB as written. Whatever the measured
+difference is at a fixed input level above both knees is the offset's true
+authority, with the slope, the room and the speaker all cancelling.
+
+**Confirming the live config:** the DRC debug line only prints when a setting
+actually changes, so after a reboot that restores the same values there is nothing
+in the log. Press **DRC Register Dump** instead — it is read-only and reports what
+is actually in the part.
+
 ---
 
 ## 4. The three-band trap
