@@ -41,6 +41,7 @@ esphome/
   louder-esp32-plus-drc-full.yaml      ESP32, HA media_player, WiFi
   louder-esp32-plus-drc.yaml           ESP32, amp only - compile check target
   packages/dac-tas58xx-drc.yaml        DAC + DRC package, for the ESP32 configs
+docs/drc-status.md                START HERE - what works, what is suspect, next
 docs/tas58xx-drc-reference.md     verified register maps and coefficient math
 docs/drc-measurement.md           measuring the real curve with REW + a UMIK-1
 docs/ha-dashboard-drc.yaml        dashboard card with the bands separated

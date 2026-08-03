@@ -81,7 +81,19 @@ def main() -> int:
                         help="level of the lead-in and lead-out reference tone, "
                              "dBFS peak. Both should measure the same; if they "
                              "do not, something drifted mid-run. (default -24)")
+    parser.add_argument("--toggle", nargs=2, type=float, metavar=("QUIET", "LOUD"),
+                        help="switch to step mode: alternate between these two "
+                             "peak levels in dBFS instead of walking a staircase. "
+                             "For measuring attack and release, where what matters "
+                             "is the level TRAJECTORY after an abrupt change, not "
+                             "the steady state. Use a long --seconds so a slow "
+                             "time constant has room to show itself.")
+    parser.add_argument("--cycles", type=int, default=3,
+                        help="quiet/loud pairs in --toggle mode (default 3)")
     args = parser.parse_args()
+
+    if args.toggle and args.cycles < 1:
+        parser.error("--cycles must be at least 1")
 
     # A whole number of cycles per step keeps every level change on a zero
     # crossing. Warn rather than fail - a fractional cycle is a click, not a
@@ -91,7 +103,13 @@ def main() -> int:
         print("WARNING: {:.0f} Hz x {:g}s = {:.3f} cycles, not a whole number. "
               "Level changes will click.".format(args.freq, args.seconds, cycles))
 
-    levels = build_levels(args.start, args.stop, args.step)
+    if args.toggle:
+        quiet, loud = args.toggle
+        if quiet >= loud:
+            parser.error("--toggle takes QUIET then LOUD, and QUIET must be lower")
+        levels = [quiet, loud] * args.cycles
+    else:
+        levels = build_levels(args.start, args.stop, args.step)
 
     phase = 0.0
     samples = []
@@ -119,9 +137,36 @@ def main() -> int:
     print("Wrote {}".format(args.out))
     print("  {:.0f} Hz sine, {} Hz, 16-bit stereo, {:.0f}s total".format(
         args.freq, args.rate, duration))
-    print("  {} steps of {:g} dB, {:g}s each, plus a {:g} dBFS reference at each end".format(
-        len(levels), args.step, args.seconds, args.reference))
+    if args.toggle:
+        print("  {} quiet/loud pairs at {:g} / {:g} dBFS, {:g}s each, plus a {:g} dBFS "
+              "reference at each end".format(args.cycles, args.toggle[0], args.toggle[1],
+                                             args.seconds, args.reference))
+    else:
+        print("  {} steps of {:g} dB, {:g}s each, plus a {:g} dBFS reference at each end".format(
+            len(levels), args.step, args.seconds, args.reference))
     print()
+
+    if args.toggle:
+        print("Block schedule - for attack and release, read each LOUD block several")
+        print("times across its length rather than once in the middle:")
+        print("  {:>7}  {:>7}  {:>10}  {:>10}  {}".format(
+            "start", "end", "peak dBFS", "RMS dBFS", "edge"))
+        t = args.seconds
+        prev = args.reference
+        for level in levels:
+            edge = "attack" if level > prev else "release"
+            print("  {:>7.1f}  {:>7.1f}  {:>10.1f}  {:>10.2f}  {}".format(
+                t, t + args.seconds, level, level - 3.01, edge))
+            t += args.seconds
+            prev = level
+        print()
+        print("A gain that is still moving reads differently at the start of a block")
+        print("than at the end. If a loud block is loudest at its onset and settles")
+        print("downward, that decay IS the attack, and its shape gives the time")
+        print("constant directly - roughly the time to cover 63% of the total drop.")
+        print("If start and end agree, the attack is faster than the block and this")
+        print("file cannot resolve it: shorten --seconds and try again.")
+        return 0
 
     print("Step schedule - t is the mid-point of each plateau, measure around there:")
     print("  {:>7}  {:>10}  {:>10}".format("t (s)", "peak dBFS", "RMS dBFS"))
