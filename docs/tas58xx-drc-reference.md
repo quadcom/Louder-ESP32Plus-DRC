@@ -782,6 +782,84 @@ compression region, nothing near the floor. Ratio 1.5, threshold −16 puts `off
 No reflash is needed: `off2 = −k·T1` is derived from the ratio and threshold
 entities, so dialling them moves the register directly.
 
+#### Measured 2026-08-03, run 14 — the curve above the knee is inverted
+
+Threshold −16, ratio 1.5, makeup 0, `off2` register −5.3333, same-session control.
+
+| block | RMS | control | DRC on | gain |
+|---|---|---|---|---|
+| −6 | −9.01 | 89.0 | **66.5** | **−22.50** |
+| −12 | −15.01 | 83.0 | 82.5 | −0.50 |
+| −18 | −21.01 | 77.4 | 76.7 | −0.70 |
+| −24 | −27.01 | 71.6 | 71.2 | −0.40 |
+| −30 | −33.01 | 65.7 | 65.2 | −0.50 |
+| −36 | −39.01 | 60.1 | 59.9 | −0.20 |
+
+Region 1 transparent for the fourth time. Everything else about this run says the
+model is wrong in shape, not merely in its constants.
+
+**Louder input produced quieter output.** Block 1 is 6 dB hotter than block 2 and
+came out 16 dB below it. Across those two points the transfer slope is **−3.67
+dB/dB**, and any slope past −1.0 inverts the curve — the condition `ratio_to_slope`
+clamps against. The clamp is doing nothing useful here, because the steepness is not
+coming from `k`: `k` was −0.3333.
+
+Two readings, two irreconcilable ways to take them:
+
+- **If both blocks are above the knee**, they lie on one line with one slope and one
+  offset, and that line has slope −3.67 where −0.3333 was written. An 11× error in
+  the slope, in a run whose only change from the confirmed-slope runs was the size of
+  the offset.
+- **If only block 1 is above the knee** — the knee having landed higher than the −16
+  dialled — then `k` is fine, and the delivered offset is −25.50 dB from a register
+  of −5.3333: **4.78 dB per unit**. But that requires the threshold to deliver a knee
+  1–7 dB high, i.e. 1.70–2.82 dB per unit, when the slope measurements pin that same
+  scaling to 3.0103.
+
+Neither survives. The first contradicts four slope measurements; the second
+contradicts the threshold scale that those same measurements depend on. **The offset
+is not behaving as a constant added to the gain**, and that is the finding — runs
+9–11 measured `k` correctly with a small offset register (−1.6610), and run 14 sees
+an apparent 11× slope error with a larger one (−5.3333). Slope and offset are
+interacting.
+
+#### Why the next run needs a register override
+
+The offset cannot be varied independently through the normal controls, because
+`off2 = −k·T1` couples it to the threshold:
+
+| ratio | T1 | off2 | plateaus above the knee |
+|---|---|---|---|
+| 1.5 | −6 | −2.000 | **0** |
+| 1.5 | −10 | −3.333 | 1 |
+| 1.5 | −16 | −5.333 | 2 |
+| 1.5 | −40 | −13.333 | 6 |
+| 2.0 | −20 | −10.000 | 2 |
+
+A small offset forces a high knee, which leaves no material above the knee to
+measure; a low knee forces a large offset. There is no setting anywhere in the
+two-dimensional control space that gives a small offset *and* several plateaus above
+the knee. Every run so far has been fighting that, and it is why three attempts to
+fit a scale factor have produced three different answers.
+
+`DRC Offset 2 Override` (diagnostic, added 2026-08-03) writes a raw value straight to
+the register and breaks the coupling. With the threshold at −60 the knee is below
+everything — for any threshold scale in 1.70–3.01 it lands between −33.9 and −60, so
+blocks 1–5 are above it regardless, and block 6 becomes a free probe of where it
+actually is.
+
+Sweeping the override at ratio 1.5 then measures both unknowns at once, five plateaus
+per point: the **gaps** give the slope, independently of the offset, and should read
+`5.78 × 2/3` = **3.85 dB** whatever the offset turns out to be. The **absolute level**
+gives the offset scale. If the gaps move as the offset changes, the interaction is
+confirmed directly.
+
+| override | c = 1 | c = 3.0103 | c = 6.0206 |
+|---|---|---|---|
+| −2.0 | 90.0 … 71.1 | 86.0 … 67.1 | 80.0 … 61.1 |
+| −4.0 | 88.0 … 69.1 | 80.0 … 61.1 | 67.9 … 49.0 |
+| −6.0 | 86.0 … 67.1 | 73.9 … 55.0 | 55.9 … 37.0 |
+
 ---
 
 ## 4. The three-band trap

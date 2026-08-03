@@ -71,6 +71,24 @@ bool Tas58xxComponent::set_drc_ratio(DrcBand band, float ratio) {
   return this->apply_drc_band_(band);
 }
 
+bool Tas58xxComponent::set_drc_offset2_override(float raw) {
+  this->drc_off2_override_ = raw;
+  if (raw > 0.0f) {
+    ESP_LOGI(TAG, "DRC off2 override released, back to the derived -k*T1");
+  } else {
+    ESP_LOGW(TAG, "DRC off2 override ACTIVE: writing %.4f raw to every band's "
+                  "region 2 offset. Diagnostic only.", raw);
+  }
+
+  // Per band rather than apply_drc_all_: the offset does not touch the crossover
+  // or the mixer, and apply_drc_band_ is the one path that waits for DRC_SETUP.
+  bool ok = true;
+  for (uint8_t band = 0; band < NUMBER_DRC_BANDS; band++) {
+    if (!this->apply_drc_band_(static_cast<DrcBand>(band))) ok = false;
+  }
+  return ok;
+}
+
 bool Tas58xxComponent::set_drc_attack(DrcBand band, float attack_ms) {
   if (attack_ms < DRC_ATTACK_MIN_MS || attack_ms > DRC_ATTACK_MAX_MS) {
     ESP_LOGE(TAG, "Invalid %s band DRC attack: %.1fms", DRC_BAND_TEXT[band], attack_ms);
@@ -211,7 +229,8 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   const float t1_raw = t1_db / DRC_THRESHOLD_DB_PER_UNIT;
   const float t2_raw = t2_db / DRC_THRESHOLD_DB_PER_UNIT;
   const float off1_raw = off1_db;
-  const float off2_raw = off2_db;
+  const bool off2_overridden = this->drc_off2_override_ <= 0.0f;
+  const float off2_raw = off2_overridden ? this->drc_off2_override_ : off2_db;
 
   // Region 1 is below the knee and must stay unity. A zero slope needs no
   // scaling, but it goes through the same conversion so the three reads alike.
@@ -233,10 +252,10 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   // Both the dB intent and the DSP units go in the log, so a measurement can be
   // checked against what was actually written without decoding a register dump.
   ESP_LOGD(TAG, "Set %s band DRC: %.1fdB %.1f:1 attack %.1fms release %.0fms "
-                "(k=%.4f off1=%.2fdB off2=%.2fdB) "
+                "(k=%.4f off1=%.2fdB off2=%.2fdB%s) "
                 "raw: k=%.4f t1=%.4f t2=%.4f off1=%.4f off2=%.4f",
            DRC_BAND_TEXT[band], t1_db, s.ratio, s.attack_ms, s.release_ms, slope,
-           off1_db, off2_db,
+           off1_db, off2_db, off2_overridden ? " OVERRIDDEN" : "",
            slope_raw, t1_raw, t2_raw, off1_raw, off2_raw);
   return true;
 }

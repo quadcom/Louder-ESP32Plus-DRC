@@ -302,26 +302,44 @@ with it. The rest needed audio measurements rather than register dumps.
 
 Not yet verified on hardware:
 
-1. **The offset's dB-per-unit.** Two same-session runs at threshold −20 / ratio 2
-   disagree by a factor of four, and no single scale fits both:
+1. **What the offset register actually does.** Not merely its scale — three runs
+   give three answers, and the third one says the shape of the equation is wrong:
 
    | run | `off2` register | delivered offset | dB per unit |
    |---|---|---|---|
    | 12 | −1.6610 | −1.51 | 0.91 |
-   | 13 | −10.00 | ≤ −41.5 | **≥ 4.15** |
+   | 13 | −10.00 | ≤ −41.5 | ≥ 4.15 |
+   | 14 | −5.3333 | −25.50 | 4.78 |
 
    A 6× change in the register cannot produce a ≥28× change in delivered
    attenuation, so at most one of those is measuring a scale factor. Each has a
-   known weakness: run 12's above-knee points were at 93.0 and 90.4 dB SPL, inside
-   this speaker's compression region, and run 13's landed 1–3 dB above a 49 dB room
-   floor, making its figures lower bounds. The candidates are 1.0, `10·log10 2` and
-   `20·log10 2`; the discriminating run is ratio 1.5 / threshold −16, which keeps
-   all three clear of both hazards and separates them by ~11 dB.
+   known weakness: run 12's above-knee points sat at 93.0 and 90.4 dB SPL, inside
+   this speaker's compression region; run 13's landed 1–3 dB above a 49 dB room
+   floor, making its figures lower bounds.
 
-   The code writes plain dB meanwhile, and that is a placeholder rather than a
-   finding. **At that scale a low knee over-attenuates loud material severely** —
-   run 13 buried region 2 in the noise floor — so treat any offset-dependent
-   behaviour as unverified and leave the ratio at 1 for listening.
+   Run 14 is the one that reframes the problem. **Louder input produced quieter
+   output** — block 1 is 6 dB hotter than block 2 and came out 16 dB below it, a
+   transfer slope of −3.67 dB/dB where −0.3333 was written. Any slope past −1.0
+   inverts the curve, which is the condition `ratio_to_slope` clamps against; the
+   clamp is irrelevant here because the steepness is not coming from `k`. Reading it
+   the other way — knee higher than dialled, so only one point is above it — rescues
+   `k` but then needs the threshold to deliver 1.70–2.82 dB per unit when the slope
+   measurements pin that same scaling to 3.0103.
+
+   So the offset is **not a constant added to the gain**. Runs 9–11 measured `k`
+   correctly with a small offset register; run 14 sees an apparent 11× slope error
+   with a larger one. Slope and offset are interacting.
+
+   The code writes plain dB meanwhile, as a placeholder rather than a finding. **At
+   that scale a low knee over-attenuates loud material severely** — run 13 buried
+   region 2 in the noise floor — so treat any offset-dependent behaviour as
+   unverified, and leave the ratio at 1 for listening.
+
+   Measuring this needs the `DRC Offset 2 Override` diagnostic, because the two
+   normal controls cannot vary the offset independently: `off2 = −k·T1`, so a small
+   offset forces a high knee and leaves nothing above it to measure, while a low knee
+   forces a large offset. No point in that two-dimensional space gives both. Fighting
+   that coupling is why three attempts at a scale factor produced three answers.
 
    What *is* settled about the offsets: the part computes `gain = k·x + O` and does
    not subtract the threshold itself, measured directly — at register −1.6610 the

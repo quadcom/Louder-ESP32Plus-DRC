@@ -325,6 +325,11 @@ static constexpr float DRC_T2_DB            =  -1.0f;
 // three is a conclusion drawn from the readings least able to support it.
 static constexpr float DRC_THRESHOLD_DB_PER_UNIT = 3.0103f;  // 10*log10 2
 
+// Sentinel for the diagnostic off2 override: any positive value means "use the
+// derived off2". A derived offset is -k*T1 with k < 0 and T1 < 0, so it is always
+// <= 0 and cannot collide with this.
+static constexpr float DRC_OFF2_DERIVED = 1.0f;
+
 static constexpr float DRC_RATIO_MIN        =   1.0f;   // 1:1 = no compression
 static constexpr float DRC_RATIO_MAX        =  20.0f;   // approaching a limiter
 

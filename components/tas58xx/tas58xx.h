@@ -125,6 +125,18 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
   bool set_drc_release(DrcBand band, float release_ms);
   bool set_drc_makeup(DrcBand band, float makeup_db);
 
+  // DIAGNOSTIC. Writes a raw value straight to every band's region 2 offset
+  // register, bypassing the derived off2 = -k*T1. Any positive value means
+  // "derived" and is the normal setting - a derived offset is always <= 0,
+  // since k < 0 and T1 < 0.
+  //
+  // This exists because off2 and the threshold cannot be varied independently
+  // through the normal controls: |off2| = |k|*|T1|, so a small offset forces a
+  // high knee and there is then no material above it to measure. Breaking that
+  // coupling is the only way to calibrate the offset register's units, which
+  // three runs have failed to pin down. See the units note in tas58xx_drc.h.
+  bool set_drc_offset2_override(float raw);
+
   // Master enable. Off restores the documented reset behaviour: all slopes and
   // offsets zeroed so the DRC is a no-op, band 1 mixer at unity, bands 2 and 3
   // muted. Thresholds and time constants are left alone since they are inert
@@ -329,6 +341,11 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
    float drc_crossover_high_hz_{3000.0f};
 
    float drc_energy_ms_{DRC_ENERGY_DEFAULT_MS}; // RMS estimator window, all bands
+
+  // Diagnostic off2 override; positive means "use the derived value". Not
+  // persisted anywhere in the component, and the YAML entity deliberately does
+  // not restore it, so any reboot returns to the derived offset.
+  float drc_off2_override_{DRC_OFF2_DERIVED};
 
    uint32_t drc_dsp_rate_{DRC_DEFAULT_DSP_RATE};
 

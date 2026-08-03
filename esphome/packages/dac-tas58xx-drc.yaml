@@ -199,6 +199,35 @@ number:
     left_eq_gain_16000Hz:
       name: Left 16000Hz
 
+  # Writes a raw value straight to every band's region 2 offset register,
+  # bypassing the derived off2 = -k*T1.
+  #
+  # DIAGNOSTIC. Leave it at +1 - the maximum, meaning "derived" - for normal use.
+  #
+  # It exists because the two normal controls cannot vary the offset
+  # independently: off2 = -k*T1, so asking for a small offset forces a high knee,
+  # and there is then no material above the knee left to measure. Three runs have
+  # failed to pin the offset register's units down because of that coupling. See
+  # the units note in components/tas58xx/tas58xx_drc.h.
+  #
+  # restore_value is deliberately false. An override lasts until the next reboot
+  # and no longer, so forgetting it leaves a device that comes back with the
+  # derived offset rather than one quietly holding a stale diagnostic value. That
+  # has bitten this project once already, with the offset convention selector.
+  - platform: template
+    name: DRC Offset 2 Override
+    id: drc_offset2_override
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: false
+    initial_value: 1.0
+    min_value: -40.0
+    max_value: 1.0
+    step: 0.25
+    mode: box
+    on_value:
+      - lambda: id(external_dac)->set_drc_offset2_override(x);
+
 sensor:
   - platform: tas58xx
     faults_cleared:
