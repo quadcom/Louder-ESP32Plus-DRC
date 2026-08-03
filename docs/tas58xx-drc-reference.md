@@ -717,6 +717,71 @@ budget, so **3 dB steps were the wrong choice** — 6 dB steps are matched to wh
 this rig resolves. Before fitting any more constants, the protocol needs
 tightening: see the RTA note in `docs/drc-measurement.md`.
 
+#### Measured 2026-08-03, run 12 — the first properly controlled run
+
+Threshold −20, ratio 2, makeup 0, 6 dB-step file, **with a ratio-1 control taken in
+the same session at the same volume** — the first pair in the series to rule out
+both cross-session drift and the file-versus-room step error.
+
+| block | RMS | control | DRC on | gain |
+|---|---|---|---|---|
+| −6 | −9.01 | 89.7 | 93.0 | **+3.3** |
+| −12 | −15.01 | 83.9 | 90.4 | **+6.5** |
+| −18 | −21.01 | 78.1 | 77.4 | −0.7 |
+| −24 | −27.01 | 72.2 | 71.6 | −0.6 |
+| −30 | −33.01 | 66.5 | 65.5 | −1.0 |
+| −36 | −39.01 | 60.7 | 60.0 | −0.7 |
+
+The control's gaps are 5.8/5.8/5.9/5.7/5.8, mean **5.800** — and the below-knee
+plateaus step 5.800 too, within 0.7 dB of the control absolutely. Region 1 is
+transparent, confirming the `off1` fix.
+
+Two things follow from the above-knee pair. The region **boosts**, which proves the
+part does not subtract the threshold itself: a threshold-subtracting part would cut
+5.5 dB here. And the fit `gain = −0.533·level − 1.51` against a register holding
+−1.6610 gives **0.91 dB per unit**, which was read as plain dB.
+
+**That reading was wrong, and run 13 shows why.** Both above-knee points sit at 93.0
+and 90.4 dB SPL, inside the speaker's compression region, with the control's top
+point at 89.7 on the same edge — the three least trustworthy readings in the table
+carrying the entire conclusion.
+
+#### Measured 2026-08-03, run 13 — plain dB over-attenuates by ~30 dB
+
+Same settings, after the offsets were switched to plain dB (`off2` register −10.00
+instead of −1.6610).
+
+| block | RMS | control | DRC on | gain | implied dB/unit |
+|---|---|---|---|---|---|
+| −6 | −9.01 | 89.0 | **52** | ≤ −37.0 | **≥ 4.15** |
+| −12 | −15.01 | 83.0 | **50** | ≤ −33.0 | **≥ 4.05** |
+| −18 | −21.01 | 77.0 | 77.8 | +0.8 | — |
+| −24 | −27.01 | 71.2 | 71.5 | +0.3 | — |
+| −30 | −33.01 | 65.5 | 65.9 | +0.4 | — |
+| −36 | −39.01 | 60.0 | 60.4 | +0.4 | — |
+
+Region 1 is transparent for the third time. Region 2 is **1–3 dB above a 49 dB room
+floor** — not a measurement of the output, a measurement of the room, so both
+dB-per-unit figures are lower bounds. They agree with each other, and `6.0206`
+predicts −60 dB, which reads exactly like this.
+
+**A 6× change in the register cannot produce a ≥28× change in delivered
+attenuation.** So at most one of runs 12 and 13 is measuring a scale factor, and no
+single constant fits both. The offset's units are **open**; the code writes plain dB
+as a placeholder, flagged as such in `tas58xx_drc.h`.
+
+The discriminating run avoids both failure modes — nothing near the speaker's
+compression region, nothing near the floor. Ratio 1.5, threshold −16 puts `off2` at
+−5.333, and the candidates separate by ~11 dB per step:
+
+| block | RMS | `c = 1` | `c = 3.0103` | `c = 6.0206` |
+|---|---|---|---|---|
+| −6 | −9.01 | 86.7 | 76.0 | 59.9 |
+| −12 | −15.01 | 82.7 | 72.0 | 55.9 |
+
+No reflash is needed: `off2 = −k·T1` is derived from the ratio and threshold
+entities, so dialling them moves the register directly.
+
 ---
 
 ## 4. The three-band trap

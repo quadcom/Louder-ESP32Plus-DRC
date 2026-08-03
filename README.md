@@ -235,7 +235,7 @@ Verified on hardware — Louder ESP32-S3 Plus, TAS5825M, 2026-08-02:
 
 - **One-band write path.** Every coefficient reads back at the address and in
   the format the code intends: thresholds and slopes in 9.23, time constants in
-  1.31, offsets in 9.23 plain dB, band 1 mixer carrying makeup gain with bands 2
+  1.31, offsets in 9.23, band 1 mixer carrying makeup gain with bands 2
   and 3 held muted. Checked with a distinct fingerprint per band — thresholds −6 /
   −30 / −48 dB, ratios 2 / 4 / 8, attacks 1 / 20 / 200 ms, releases 100 / 500 /
   2000 ms — so all three address maps are confirmed independent and correct.
@@ -261,43 +261,72 @@ Verified on hardware — Louder ESP32-S3 Plus, TAS5825M, 2026-08-02:
   and behaved as a constant −9.5 dB cut. See §3 of the reference doc for both
   results and the test that separates the three candidate conventions.
 - **The DSP's log domain is not dB.** Measured 2026-08-03 with a UMIK-1 and REW.
-  Three separate symptoms — a slope acting with exactly twice its authority
-  (+18.6 dB measured where +9.0 was predicted), an offset of −10 dB costing at
-  least 46 dB, and a −20 dB threshold that never engaged anywhere between −6 and
-  −36 dBFS — all follow from one model: the detector tracks `log2` of the mean
-  square and the gain returns as a power-of-two multiplier on amplitude, so
-  `gain_dB = 2·k·level_dB + 6.0206·O`. Thresholds are divided by `10·log10 2`,
-  offsets by `20·log10 2`, and the slope by 2. `k` being the only dimensionless
-  one of the three is why ratio-only changes always looked plausible while every
-  offset overshot into silence. §3 of the reference doc has the numbers.
+  A −20 dB threshold written raw never engaged anywhere between −6 and −36 dBFS,
+  because the detector tracks `log2` of the mean square rather than dB:
 
-That establishes what the amp *stores*, and the shape of what it *does* with it.
-The remaining item needs an audio measurement, not a register dump.
+      u       = log2(mean square) = level_dB / 3.0103    (10·log10 2)
+      gain_dB = 3.0103·k·u + O    = k·level_dB + O
+
+  So a dB quantity needs converting only if it is compared against `u`. The
+  threshold is, and is divided by `10·log10 2`. The slope is not, and goes in
+  unscaled — the `3.0103` cancels. **What happens to the offsets is still open**;
+  see item 1 below.
+- **Region 1's offset must be zero.** `off1` governs the region *below* the knee,
+  not above it, whatever SLOA148's numbering suggests. With `−k·T1` written there,
+  the four below-knee plateaus came back a flat 9.2 dB down and the knee showed a
+  10.5 dB discontinuity where 3.5 dB was due. Zeroing it made region 1 transparent
+  to 0.3 dB, confirmed in three separate runs. This was the original bug — quiet
+  material losing most of its level.
+
+That establishes what the amp *stores*, and most of the shape of what it *does*
+with it. The rest needed audio measurements rather than register dumps.
 
 - **The K-slope ↔ ratio mapping, and the threshold.** Measured 2026-08-03 with a
   UMIK-1 and REW. `k = 1/ratio − 1` goes to the register **unscaled**, as SLOA148
   says. Holding every plateau above the knee (threshold −40 dB, ratio 2) gave
   2.780 dB steps against a transparent control's 5.80, i.e. a delivered ratio of
-  **2.09 against 2.00 requested**. Read the spacing against a control run, never
-  against the test file's nominal step: the file steps 6.00 dB and the room
-  delivered 5.78, and dividing by the nominal inflates the slope by 4%.
+  **2.09 against 2.00 requested**; two later runs give 1.87 and 1.84 for the same
+  request. Read the spacing against a control run, never against the test file's
+  nominal step: the file steps 6.00 dB and the room delivered 5.78, and dividing by
+  the nominal inflates the slope by 4%.
 
   The threshold is right too, and **RMS-referenced** — the knee lands 3.01 dB above
   the dialled value in sine peak terms. Below it the DRC is transparent, its
   plateaus stepping 5.80 dB against the control's 5.78.
 
+  One measurement discipline earned the rest: **every reliable result here came from
+  a control run in the same session, at the same volume.** Each of the three wrong
+  constants that got written and then removed came from comparing across sessions,
+  or against the file's nominal step, or from readings sitting in the speaker's
+  compression region or the room's noise floor.
+
 Not yet verified on hardware:
 
-1. **Whether the offset anchors the knee at full slope.** At threshold −20 with
-   the corrected slope, the region above the knee measured **9.6–9.9 dB high**
-   against an extrapolation of the same run's own transparent region — a boost
-   where a cut is due. The same offset register anchored that knee to within
-   0.25 dB at half the slope, so the offset's authority is not simply
-   proportional to what is written, and `DRC_OFFSET_DB_PER_UNIT` is provisional.
-   That run's above-knee plateaus sat at 92.7 and 95.8 dB SPL, above where this
-   speaker compresses, so **repeat it 10 dB quieter with a same-session control**
-   before drawing conclusions. Until then, treat threshold −20 at high volume as
-   capable of boosting.
+1. **The offset's dB-per-unit.** Two same-session runs at threshold −20 / ratio 2
+   disagree by a factor of four, and no single scale fits both:
+
+   | run | `off2` register | delivered offset | dB per unit |
+   |---|---|---|---|
+   | 12 | −1.6610 | −1.51 | 0.91 |
+   | 13 | −10.00 | ≤ −41.5 | **≥ 4.15** |
+
+   A 6× change in the register cannot produce a ≥28× change in delivered
+   attenuation, so at most one of those is measuring a scale factor. Each has a
+   known weakness: run 12's above-knee points were at 93.0 and 90.4 dB SPL, inside
+   this speaker's compression region, and run 13's landed 1–3 dB above a 49 dB room
+   floor, making its figures lower bounds. The candidates are 1.0, `10·log10 2` and
+   `20·log10 2`; the discriminating run is ratio 1.5 / threshold −16, which keeps
+   all three clear of both hazards and separates them by ~11 dB.
+
+   The code writes plain dB meanwhile, and that is a placeholder rather than a
+   finding. **At that scale a low knee over-attenuates loud material severely** —
+   run 13 buried region 2 in the noise floor — so treat any offset-dependent
+   behaviour as unverified and leave the ratio at 1 for listening.
+
+   What *is* settled about the offsets: the part computes `gain = k·x + O` and does
+   not subtract the threshold itself, measured directly — at register −1.6610 the
+   above-knee region **boosted** +3.3 and +6.5 dB where a threshold-subtracting part
+   would have cut 5.5 dB.
 2. ~~**The offset continuity convention.**~~ **Superseded 2026-08-02 — offsets
    are y-intercepts, not curve values at the thresholds.** The runtime selector
    that compared the three candidates was removed on 2026-08-03: two of them left

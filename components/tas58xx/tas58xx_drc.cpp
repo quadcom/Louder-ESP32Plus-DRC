@@ -182,9 +182,12 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   //
   // off2 governs region 2 and is the y-intercept that places the knee at T1: the
   // part computes gain = k*x + O and does not subtract the threshold itself. It
-  // must not be left at zero, or the region unanchors into a boost of -k*x.
+  // must not be left at zero, or the region unanchors into a boost of -k*x - which
+  // is measured, not assumed: at register -1.6610 the above-knee region boosted
+  // +3.3 and +6.5 dB where a threshold-subtracting part would have cut.
   //
-  // See the offsets note in tas58xx_drc.h for the measurements behind both.
+  // What the register scale is remains open. See the offsets note in
+  // tas58xx_drc.h.
   const float off1_db = 0.0f;
   const float off2_db = -slope * t1_db;
 
@@ -197,9 +200,13 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   if (!this->write_drc_coefficient_(addr.decay.page, addr.decay.sub_addr,
                                     time_constant_to_f1_31(s.release_ms, this->drc_dsp_rate_))) ok = false;
 
-  // Only the thresholds change units on the way to the registers: they are
-  // compared against log2 of the mean square, where the slope and the offsets are
-  // already in the units the part wants. See the header for the measurements.
+  // The thresholds change units on the way to the registers, being compared
+  // against log2 of the mean square; the slope does not, because that scaling
+  // cancels. The offsets are written as plain dB, which is a PLACEHOLDER - two
+  // runs disagree about their dB-per-unit by a factor of four and the open
+  // question is recorded in the header. At this scale a low knee over-attenuates
+  // loud material badly (measured: region 2 buried in the noise floor at knee -20,
+  // ratio 2), so treat any offset-dependent behaviour as unverified.
   const float slope_raw = slope;
   const float t1_raw = t1_db / DRC_THRESHOLD_DB_PER_UNIT;
   const float t2_raw = t2_db / DRC_THRESHOLD_DB_PER_UNIT;

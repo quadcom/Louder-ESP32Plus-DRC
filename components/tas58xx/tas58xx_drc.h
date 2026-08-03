@@ -78,10 +78,10 @@ struct DrcBandAddresses {
   DrcAddress k0;           // 9.23  region 1 slope
   DrcAddress k1;           // 9.23  region 2 slope
   DrcAddress k2;           // 9.23  region 3 slope
-  DrcAddress t1;           // 9.23  threshold 1, plain dB
-  DrcAddress t2;           // 9.23  threshold 2, plain dB
-  DrcAddress off1;         // 9.23  gain curve value at T1, plain dB
-  DrcAddress off2;         // 9.23  gain curve value at T2, plain dB
+  DrcAddress t1;           // 9.23  threshold 1, in the detector's log2 units
+  DrcAddress t2;           // 9.23  threshold 2, in the detector's log2 units
+  DrcAddress off1;         // 9.23  region 1 gain offset (see the units note below)
+  DrcAddress off2;         // 9.23  region 2 gain offset (see the units note below)
 }__attribute__((packed));
 
 // Biquad: five consecutive 32-bit coefficients B0,B1,B2,A1,A2 starting here.
@@ -273,60 +273,56 @@ static constexpr float DRC_T2_DB            =  -1.0f;
 
 //// The DSP's log domain is not dB
 //
-// Measured 2026-08-03 with a UMIK-1: at ratio 2 (k = -0.5) with both offsets
-// zero, a -18 dBFS tone came out 18.6 dB LOUDER, where gain = k*x predicts
-// +9 dB. Twice the authority, to within 0.6 dB. Separately, an offset written as
-// -10 dB buried a six-plateau staircase at least 46 dB into the noise floor, and
-// a -20 dB threshold never engaged at all - no plateau from -6 to -36 dBFS was
-// left flat.
-//
-// One model accounts for all three. The detector tracks log2 of the mean square,
-// and the resulting gain is applied as a power-of-two multiplier on amplitude:
-//
-//   u       = log2(P)      = level_dB / 3.0103      (10*log10 2)
-//   gain_dB = 6.0206 * gain_u                       (20*log10 2)
-//   gain_u  = k * u + O
-//        =>  gain_dB = 2 * k * level_dB + 6.0206 * O
-//
-// So every dB quantity needs dividing by the dB-per-unit of whichever side of
-// that equation it lands on. Thresholds are compared against u; offsets are
-// added to gain_u; the slope picks up a bare factor of two from the
-// power-to-amplitude conversion, being the one dimensionless quantity of the
-// three. That asymmetry is why ratio-only changes always behaved plausibly while
-// every attempt to add an offset overshot into silence.
-//
-// A -20 dB threshold written raw put the knee at -60 dB, which is why the whole
-// staircase sat in one region and nothing was ever flat.
-//
-// What measurement settled, and it is only the threshold that needs scaling:
+// The detector tracks log2 of the mean square, not dB, so a dB quantity has to be
+// converted on the way to the registers - but only if it is compared against that
+// log level. Which quantities those are had to be measured; the datasheets do not
+// say, and a -20 dB threshold written raw puts the knee at -60 dB, which is why
+// early runs had the whole staircase sitting in one region with nothing flat.
 //
 //   u        = log2(mean square) = level_dB / 3.0103        (10*log10 2)
 //   gain_dB  = 3.0103 * k * u + O  =  k * level_dB + O
 //
-// so the threshold is compared against u and gets divided, while k and O both go
-// in untouched - k because the 3.0103 cancels against u's scaling, O because it is
-// added to a gain that is already in dB.
+// The threshold is compared against u, so it gets divided. The slope goes in
+// untouched, because the 3.0103 cancels against u's own scaling. What happens to
+// the offset is NOT settled - see below.
 //
-// Each of the three was measured separately, all against a transparent control run
-// in the same session:
+// Measured, each against a transparent control run in the same session:
 //
 //   threshold  the knee lands where it is asked to, bracketed to -20 dBFS RMS by
 //              the plateaus either side of the break. RMS-referenced, so for a
 //              sine the knee sits 3.01 dB above the dialled value in peak terms.
 //   slope      two runs an octave apart in k, with every plateau held above the
 //              knee, give 1.093 and 0.989 dB of gain per dB of level per unit.
-//              That is 1.0, exactly SLOA148's k = 1/ratio - 1.
-//   offset     with the knee at -20 and k at -0.5, the above-knee region fits
-//              gain = -0.533*level - 1.51 against a register holding -1.6610.
-//              0.91 dB per unit, i.e. plain dB.
+//              That is 1.0, exactly SLOA148's k = 1/ratio - 1. Two further runs
+//              agree: 2.086 and 1.84 delivered for a request of 2.00.
 //
-// Two wrong turns are worth remembering, because both looked convincing. A factor
-// of two on the slope came from reading a clipped 98 dB SPL as if it were the
-// chip's gain - it was the amp's ceiling. A 1.152 came from dividing by the test
-// file's nominal 6.00 dB step when the room was delivering 5.78; gaps must always
-// be read against a control run, never against the file. And a 20*log10 2 on the
-// offset came from cross-session absolute comparisons, which this board quietly
-// invalidates by re-enabling its EQ on every reboot.
+// OPEN: the offset's dB-per-unit. Two runs disagree by a factor of four and no
+// single scale fits both, so the code below currently writes offsets as plain dB
+// and that is a placeholder, not a finding:
+//
+//   run 12  knee -20, k -0.5, register -1.6610. The above-knee region fits
+//           gain = -0.533*level - 1.51, i.e. 0.91 dB per unit. Both of its
+//           above-knee points were at 93.0 and 90.4 dB SPL, inside the speaker's
+//           compression region, and its control's top point at 89.7 was on that
+//           edge - the two least trustworthy readings in the set.
+//   run 13  same knee and k, register -10.00 (plain dB). Both above-knee plateaus
+//           landed 1-3 dB above a 49 dB room floor, so the true output is buried:
+//           >= 4.15 and >= 4.05 dB per unit, agreeing with each other and both
+//           lower bounds. 6.0206 would predict exactly this.
+//
+// A 6x change in the register cannot produce a >= 28x change in delivered
+// attenuation, so at most one of those is a scale factor. Candidates are 1.0,
+// 3.0103 and 6.0206; the discriminating run holds the knee at -16 with ratio 1.5,
+// which keeps even the strongest candidate clear of the noise floor.
+//
+// Three wrong turns are worth remembering, because all three looked convincing. A
+// factor of two on the slope came from reading a clipped 98 dB SPL as if it were
+// the chip's gain - it was the amp's ceiling. A 1.152 came from dividing by the
+// test file's nominal 6.00 dB step when the room was delivering 5.78; gaps must
+// always be read against a control run, never against the file. And a 20*log10 2
+// on the offset came from cross-session absolute comparisons, which this board
+// quietly invalidates by re-enabling its EQ on every reboot. The pattern in all
+// three is a conclusion drawn from the readings least able to support it.
 static constexpr float DRC_THRESHOLD_DB_PER_UNIT = 3.0103f;  // 10*log10 2
 
 static constexpr float DRC_RATIO_MIN        =   1.0f;   // 1:1 = no compression

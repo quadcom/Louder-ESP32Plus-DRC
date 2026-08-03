@@ -29,3 +29,6 @@ __pycache__/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Generated test signals - regenerate with tools/make_drc_staircase.py
+*.wav

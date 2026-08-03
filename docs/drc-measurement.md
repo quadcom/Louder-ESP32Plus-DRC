@@ -46,12 +46,19 @@ In Home Assistant, on the Speaker device page:
 
 | Control | Set to | Because |
 |---|---|---|
-| Media player volume | **100%** | ESPHome scales the audio in software before the DSP sees it. At 50% every level is 6 dB lower and the answer moves 6 dB. |
+| Media player volume | **90%**, and identical in both runs | ESPHome scales the audio in software *before* the DSP, so volume moves every level relative to a fixed knee. 100% has clipped the amp into protection on this rig; 90% has been the working setting throughout. |
 | EQ | flat / off | EQ gain at 1 kHz changes the level directly. |
 | `DRC` switch | **off** for run 1 | |
 | `DRC Low Makeup` | 0 dB | |
-| `DRC Low Threshold` | −20 dB | for run 2 |
-| `DRC Low Ratio` | 2 | for run 2 |
+| `DRC Low Threshold` | **−16 dB** | for run 2 |
+| `DRC Low Ratio` | **1.5** | for run 2 |
+
+Threshold −16 with ratio 1.5 is chosen deliberately, not arbitrarily. It puts two
+plateaus above the knee and four below, and it keeps every predicted reading away
+from both hazards that have wrecked earlier runs — nothing near the ~90 dB SPL where
+this speaker starts compressing, nothing near the room's noise floor. Threshold −20
+with ratio 2 does not: at the current offset scale it buries everything above the
+knee. **If you are listening rather than measuring, leave the ratio at 1.**
 
 Put the UMIK-1 on a stand a metre or so in front of the speaker, pointed at it,
 and **do not move it or touch the volume again until both runs are done.**
@@ -121,29 +128,30 @@ same six numbers in the second column.
 
 ### G. What the numbers mean
 
-Subtract again to get the five gaps.
+The ratio and the threshold are already confirmed. What this run measures is the
+**offset scale**, and the number that carries it is not a gap — it is how far the
+top two plateaus sit below the same plateaus in run 1. Three candidate scales
+predict wildly different answers:
 
-- Gaps of **6.0 dB** mean the compressor is doing nothing at those levels.
-- Gaps of **3.0 dB** mean it is compressing at exactly 2:1 — which is what was
-  asked for, and the result that closes this out.
-- Some other number means the ratio is `6.0 / gap`. A gap of 2.0 is really 3:1,
-  a gap of 1.5 is really 4:1.
+| plateau | if the scale is 1 | if it is `10·log10 2` | if it is `20·log10 2` |
+|---|---|---|---|
+| −6 dBFS | run 1 − 2.3 | run 1 − 13.1 | run 1 − 29.1 |
+| −12 dBFS | run 1 − 0.3 | run 1 − 11.1 | run 1 − 27.1 |
 
-With the threshold at −20 dB you should see the change happen between the
-−18 dBFS and −24 dBFS plateaus: the loud end compressed, the quiet end not.
+They are ~11 dB apart, so this does not need a careful measurement to settle — only
+an honest one. If the answer lands nowhere near any of the three columns, that is
+worth knowing too: it would mean the offset is not a scaled dB quantity at all.
 
-Two more things fall out of the same six numbers:
+Two checks on the same six numbers:
 
-- **Where the change happens** tells you what the chip's detector measures. If
-  the −18 plateau is compressed and −24 is not, that's about right for a
-  threshold of −20. If the break sits noticeably lower than expected, the
-  detector is reading RMS rather than peak, and every threshold in the UI is
-  really 3 dB lower than it says.
-- **The quiet plateaus must match run 1's numbers**, not just each other's
-  spacing. If the −30 and −36 readings are (say) 10 dB below what run 1 gave for
-  the same plateaus, the DRC is quietly cutting level where it should be doing
-  nothing at all — which is the thing that was wrong with the piano track, and
-  worth knowing.
+- **The four quiet plateaus must match run 1's numbers**, not just each other's
+  spacing. Threshold −16 means the −18 plateau and below are beneath the knee (the
+  detector is RMS-referenced, so a −18 dBFS sine reads −21 dBFS to it) and the DRC
+  should be leaving them completely alone. If they are down by a constant amount,
+  the region-1 offset has come back.
+- **The gap between the top two** should be run 1's own gap × `1/1.5`, so about
+  3.9 dB if run 1 delivers its usual 5.8 — not 4.0 dB from the file's nominal 6.0.
+  That is a free re-check of the ratio, and it is independent of the offset scale.
 
 Send me the two columns and I'll do the arithmetic and write it up.
 
@@ -232,59 +240,60 @@ plateaus by hand against the script's timestamps.
 ## 4. Run it twice
 
 **Run 1 — DRC off.** This is the control, and it validates the whole measurement
-chain. Spacing should be **3.00 dB between every pair of plateaus.**
+chain. It is not optional and it is not reusable from an earlier session: the
+board re-enables its EQ on every reboot, which puts a constant offset on 1 kHz and
+silently invalidates any cross-session comparison of absolute level.
 
-Where it isn't, the fault is not the DRC:
+The spacing should be **the same between every pair of plateaus.** It will not be
+the file's nominal 6.00 — this rig delivers 5.78 to 5.80 — and that measured figure,
+not the nominal, is what every later division uses. Getting this backwards inflated
+a slope constant by 4% and cost two runs.
 
-- Spacing collapsing at the *bottom* is the room noise floor. Ignore plateaus
-  below it.
-- Spacing collapsing at the *top* is the amp or the speaker compressing. Reduce
-  the volume and run again, or discard the top plateaus.
+Where the spacing isn't straight, the fault is not the DRC:
 
-Do not proceed until you have a straight run of plateaus at 3.00 dB. Anything you
-measure with the DRC on is only trustworthy across that range.
+- Collapsing at the *bottom* is the room noise floor. Ignore plateaus within about
+  10 dB of a quiet-room reading; on the SPL meter that has meant everything under
+  ~59 dB.
+- Collapsing at the *top* is the amp or the speaker compressing — on this rig,
+  anything above about 90 dB SPL. Reduce the volume and run again, or discard the
+  top plateaus. **Do not fit anything to a reading in that region**; two conclusions
+  have already been retracted for resting on one.
 
-**Run 2 — DRC on.** Threshold −20 dB, ratio 2, makeup 0 dB. Same file, same
-everything else.
+**Run 2 — DRC on.** Threshold −16 dB, ratio 1.5, makeup 0 dB. Same file, same
+volume, same mic position, same session.
 
 ## 5. Read it
 
-Expected spacing for a 3 dB input step:
+Expected spacing above the knee, as a fraction of run 1's own measured spacing:
 
-| ratio | spacing above the knee |
-|---|---|
-| 1:1 | 3.00 dB |
-| 2:1 | **1.50 dB** |
-| 3:1 | 1.00 dB |
-| 4:1 | 0.75 dB |
-| 8:1 | 0.38 dB |
-| 20:1 | 0.15 dB |
+| ratio | above the knee | × run 1's 5.80 |
+|---|---|---|
+| 1:1 | run 1 × 1.00 | 5.80 dB |
+| 1.5:1 | run 1 × 0.667 | **3.87 dB** |
+| 2:1 | run 1 × 0.50 | 2.90 dB |
+| 4:1 | run 1 × 0.25 | 1.45 dB |
+| 8:1 | run 1 × 0.125 | 0.73 dB |
+| 20:1 | run 1 × 0.05 | 0.29 dB |
 
-At threshold −20 and ratio 2, a correct compressor gives:
+The ratio and the threshold are both confirmed on this part already — three runs
+each. What is left is the **offset scale**, and spacing cannot see it: an offset is a
+constant, so it shifts the whole above-knee line without changing its slope. The
+number that carries it is how far the above-knee plateaus sit below run 1's, in
+absolute terms. §0's table has the predictions.
 
-- **3.00 dB spacing** for every plateau below the knee, identical to run 1.
-- **1.50 dB spacing** for every plateau above it.
-- A clean break between the two.
+Two supporting checks, both from the same six readings:
 
-Three things to read off the result:
+**Flatness below the knee.** Plateaus below the knee must sit at the *same absolute
+level* as run 1, not merely share its spacing. A uniform shortfall of about `−k·T1`
+means region 1 has picked up an offset it should never have — the bug that started
+this whole exercise, where a quiet piano track lost most of its level. Comparing
+absolute levels between runs is the one place absolute numbers matter, and it only
+works because nothing in the chain moved between them.
 
-**The ratio** is `3.00 / spacing`. If it comes out at 2.0 ± 0.1, `k = 1/ratio − 1`
-is confirmed on this part and the last open item in the README is closed.
-
-**The knee position** tells you what the detector measures. The threshold was set
-to −20 dB. If the break appears at a plateau of −20 dBFS *peak*, the detector is
-peak- or full-scale-referenced. If it appears at −17 dBFS peak — which is
-−20 dBFS RMS — the detector is RMS-referenced, and every threshold number in the
-UI is really 3 dB lower than it looks for sine input. Either answer is fine, but
-it needs writing down.
-
-**Flatness below the knee** settles the region 1 question. Plateaus below the
-knee must sit at the *same absolute level* as run 1, not merely have the same
-spacing. If they are all uniformly low by about 10 dB — which is `−k·T1`, the
-value Intercept writes to the offset registers — then region 1 is picking up an
-offset it shouldn't, and the offsets need rethinking again. Comparing absolute
-levels between runs is the one place absolute numbers matter, and it works
-because nothing in the chain moved between them.
+**The break position** confirms what the detector measures, and it has: the knee
+lands 3.01 dB above the dialled threshold in sine peak terms, because a sine's RMS is
+3.01 dB below its peak. With the threshold at −16, expect the −18 dBFS plateau
+(−21 dBFS RMS) to be *below* the knee and −12 dBFS (−15 RMS) above it.
 
 ## 6. While it's set up
 
