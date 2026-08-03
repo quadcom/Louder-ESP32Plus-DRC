@@ -38,13 +38,21 @@ enum DrcBandMode : uint8_t {
 // region's k and O apply - it does NOT subtract the threshold itself. So an
 // offset is the line's y-intercept, and O = -k*T1 is what places the knee at T1:
 //
-//   region 1  gain = 0
-//   region 2  gain = k*x + O,  O = -k*T1   -> 0 dB at T1
-//   region 3  gain = k*x + O                 same line, continuous through T2
+//   region 1  x <  T1   gain = k0*x + O1,  k0 = 0, O1 = 0     -> transparent
+//   region 2  x >= T1   gain = k *x + O2,  O2 = -k*T1         -> 0 dB at T1
+//   region 3  x >= T2   same slope, so the line continues through T2
 //
 // where x is the detector level in dBFS, T1 the knee, T2 pinned at -1 dBFS, and
 // k = 1/ratio - 1, so k is negative for compression. See §3 of
 // docs/tas58xx-drc-reference.md for the measurements this rests on.
+//
+// The register numbering is the trap: **off1 belongs to region 1, not region 2**.
+// Measured 2026-08-03 - with both offsets at -k*T1 = -10 dB, the four plateaus
+// below the knee came back a flat 9.2 dB down where they must be untouched, and
+// the knee itself showed a 10.5 dB discontinuity where 3.5 dB was due. Both
+// numbers are that -10 dB landing where nothing should be, and region 1's slope
+// is genuinely zero, so an offset there is pure constant attenuation on exactly
+// the quiet material a compressor exists to leave alone.
 //
 // This was briefly a runtime-selectable choice of three conventions, because the
 // offsets could not be settled from the datasheets and each guess otherwise cost

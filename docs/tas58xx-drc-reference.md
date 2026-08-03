@@ -445,12 +445,71 @@ speaker itself compresses, so the slope there is not yet measured. With
 `S = 4.16` the −12 plateau predicts +0.6 dB against +0.9 observed, which is
 encouraging and nothing more.
 
-**Next:** threshold **−2 dB**, ratio 2, everything else unchanged. That puts the
-knee above full scale, so all six plateaus fall below it and give six readings of
-one constant, with an offset ten times smaller (−1.00 dB, `−0.1661` raw). If the
-cut drops from ~6.9 dB to **~0.69 dB** the offset is confirmed as the cause and
-the scale falls out of the 10:1 lever arm. Region 1's slope being zero makes that
-run boost-free, so it is safe at normal levels.
+#### Measured 2026-08-03, run 5 — off1 belongs to region 1
+
+Threshold −2 dB, ratio 2, so the knee sits above full scale and all six plateaus
+fall in region 1. `off1 = off2 = −0.1661` raw, intended −1.00 dB.
+
+**A control run matters more than it looked.** An accidental ratio-1 run turned
+out to be the most useful measurement of the day. At ratio 1 the slope
+short-circuits to zero and the offsets follow, so the DRC writes coefficients
+*identical to the bypass path* — same zero slopes, same zero offsets, and the same
+unity mixer gain, since `DRC_MIXER_UNITY` is `0x00800000` and 0 dB of makeup
+encodes to the same 1.0. It therefore cannot differ from DRC-off, yet it measured
+**2.55 dB louder** than run 1. That is drift between sessions, not gain, and it
+means run 1 is not a safe baseline for anything measured later. Referenced against
+the ratio-1 control instead:
+
+| plateau | run 4, T = −20 | run 5, T = −2 |
+|---|---|---|
+| −6 dBFS | −2.90 | −1.60 |
+| −12 dBFS | −1.40 | −1.60 |
+| −18 dBFS | −9.60 | −1.70 |
+| −24 dBFS | −9.40 | −1.70 |
+| −30 dBFS | −9.30 | −1.60 |
+| −36 dBFS | −8.60 | −1.70 |
+
+Run 5 is flat to **0.10 dB across all six plateaus** and shows no knee, which is
+correct for a signal entirely inside region 1 — and confirms again that `k0 = 0`
+lands. But region 1 is not transparent: it is a constant cut, and the cut tracks
+the offset.
+
+**The offset scale of `20·log10 2` was right; the register mapping was not.**
+Three independent estimates of the scale:
+
+| measurement | offset written | effect | implied dB/unit |
+|---|---|---|---|
+| run 4, below knee | −1.6610 | −9.22 dB | 5.55 |
+| run 4, knee discontinuity | −1.6610 | 10.50 dB | 6.32 |
+| run 5, all plateaus | −0.1661 | −1.65 dB | 9.93 |
+
+The first two bracket 6.0206 and need no change. The third cannot resolve
+anything: the run-to-run scatter is around 0.7 dB, which swamps a 1 dB signal, so
+that 9.93 carries no weight. The knee figure is the strongest of the three because
+it is baseline-free — with the knee at −20 dBFS RMS, the −12 dBFS plateau sits
+4.99 dB above it and the −18 dBFS plateau 1.01 dB below, so a correct 2:1 curve
+gives `4.99/2 + 1.01 = 3.50 dB` between them. The measured 14.00 dB leaves a
+**10.50 dB discontinuity** against an offset of −10.00 dB.
+
+So −10 dB is landing, at the right size, in the wrong place. **`off1` governs
+region 1, below the knee — not region 2.** The fix is `off1 = 0`, leaving
+`off2 = −k·T1` to anchor the knee. That is both symptoms at once: the flat 9.2 dB
+cut on quiet material and the 10.5 dB step at the knee.
+
+It also, finally, explains the original report that started all of this — a quiet
+piano track losing most of its level at threshold −20 with ratio 2. Region 1 was
+being attenuated by the full `−k·T1`, and quiet material lives entirely in
+region 1.
+
+**Still unmeasured: the slope above the knee.** Every run so far has had at most
+two plateaus in region 2, one of them the −6 dBFS plateau where the speaker itself
+compresses. Run 4's single usable gap there was 4.4 dB against 2.9 dB predicted,
+which hints the compression is weaker than asked for, but one gap is not a
+measurement. A threshold of −40 dB puts eight plateaus above the knee and reads
+the ratio off their spacing directly.
+
+**And capture a DRC-off control in the same session as every future run**, given
+2.55 dB of drift turned up between two that were assumed comparable.
 
 ---
 

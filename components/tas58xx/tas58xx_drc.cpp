@@ -173,14 +173,18 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   const float t2_db = DRC_T2_DB;
   const float slope = ratio_to_slope(s.ratio);
 
-  // The offset is the y-intercept of gain = k*x + O, so it is what puts the knee
-  // at T1 - the part does not subtract the threshold itself. Both regions above
-  // the knee get the same value because they share a slope, which makes the line
-  // continuous through T2. See the offsets note in tas58xx_drc.h.
+  // off1 governs region 1, BELOW the knee - not region 2, which is what SLOA148's
+  // numbering suggests and what this code assumed until it was measured. Region 1
+  // already has a zero slope, so any offset there is a pure constant attenuation
+  // on exactly the quiet material the DRC is supposed to leave alone. It has to
+  // be zero.
   //
-  // Neither offset may be left at zero: that unanchors its region into a boost
-  // of -k*x, which is loud enough to trip an amp's protection.
-  const float off1_db = -slope * t1_db;
+  // off2 governs region 2 and is the y-intercept that places the knee at T1: the
+  // part computes gain = k*x + O and does not subtract the threshold itself. It
+  // must not be left at zero, or the region unanchors into a boost of -k*x.
+  //
+  // See the offsets note in tas58xx_drc.h for the measurements behind both.
+  const float off1_db = 0.0f;
   const float off2_db = -slope * t1_db;
 
   // Ascending address order, matching how the biquad blocks must be written.
