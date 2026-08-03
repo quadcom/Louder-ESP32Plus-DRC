@@ -36,10 +36,10 @@ static constexpr const char* TAG = "tas5825m.drc";
 static constexpr const char* ERROR = "Error";
 
 using tas58xx_helpers::BiquadCoefficients;
-using tas58xx_helpers::db_to_f9_23;
 using tas58xx_helpers::design_butterworth_highpass;
 using tas58xx_helpers::design_butterworth_lowpass;
 using tas58xx_helpers::linear_db_to_f9_23;
+using tas58xx_helpers::log_units_to_f9_23;
 using tas58xx_helpers::raw_to_wire;
 using tas58xx_helpers::ratio_to_slope;
 using tas58xx_helpers::slope_to_f9_23;
@@ -224,26 +224,40 @@ bool Tas58xxComponent::apply_drc_band_(DrcBand band) {
   if (!this->write_drc_coefficient_(addr.decay.page, addr.decay.sub_addr,
                                     time_constant_to_f1_31(s.release_ms, this->drc_dsp_rate_))) ok = false;
 
-  // Region 1 is below the knee and must stay unity.
+  // Everything above is in dB, which is the only sane way to reason about a
+  // compressor. The registers are not: see the DB_PER_UNIT constants in the
+  // header for the measurement that established the DSP's actual log domain.
+  const float slope_raw = slope / DRC_SLOPE_POWER_FACTOR;
+  const float t1_raw = t1_db / DRC_THRESHOLD_DB_PER_UNIT;
+  const float t2_raw = t2_db / DRC_THRESHOLD_DB_PER_UNIT;
+  const float off1_raw = off1_db / DRC_OFFSET_DB_PER_UNIT;
+  const float off2_raw = off2_db / DRC_OFFSET_DB_PER_UNIT;
+
+  // Region 1 is below the knee and must stay unity. A zero slope needs no
+  // scaling, but it goes through the same conversion so the three reads alike.
   if (!this->write_drc_coefficient_(addr.k0.page, addr.k0.sub_addr, slope_to_f9_23(0.0f))) ok = false;
-  if (!this->write_drc_coefficient_(addr.k1.page, addr.k1.sub_addr, slope_to_f9_23(slope))) ok = false;
-  if (!this->write_drc_coefficient_(addr.k2.page, addr.k2.sub_addr, slope_to_f9_23(slope))) ok = false;
+  if (!this->write_drc_coefficient_(addr.k1.page, addr.k1.sub_addr, slope_to_f9_23(slope_raw))) ok = false;
+  if (!this->write_drc_coefficient_(addr.k2.page, addr.k2.sub_addr, slope_to_f9_23(slope_raw))) ok = false;
 
-  if (!this->write_drc_coefficient_(addr.t1.page, addr.t1.sub_addr, db_to_f9_23(t1_db))) ok = false;
-  if (!this->write_drc_coefficient_(addr.t2.page, addr.t2.sub_addr, db_to_f9_23(t2_db))) ok = false;
+  if (!this->write_drc_coefficient_(addr.t1.page, addr.t1.sub_addr, log_units_to_f9_23(t1_raw))) ok = false;
+  if (!this->write_drc_coefficient_(addr.t2.page, addr.t2.sub_addr, log_units_to_f9_23(t2_raw))) ok = false;
 
-  if (!this->write_drc_coefficient_(addr.off1.page, addr.off1.sub_addr, db_to_f9_23(off1_db))) ok = false;
-  if (!this->write_drc_coefficient_(addr.off2.page, addr.off2.sub_addr, db_to_f9_23(off2_db))) ok = false;
+  if (!this->write_drc_coefficient_(addr.off1.page, addr.off1.sub_addr, log_units_to_f9_23(off1_raw))) ok = false;
+  if (!this->write_drc_coefficient_(addr.off2.page, addr.off2.sub_addr, log_units_to_f9_23(off2_raw))) ok = false;
 
   if (!ok) {
     ESP_LOGW(TAG, "%s writing %s band DRC coefficients", ERROR, DRC_BAND_TEXT[band]);
     return false;
   }
 
+  // Both the dB intent and the DSP units go in the log, so a measurement can be
+  // checked against what was actually written without decoding a register dump.
   ESP_LOGD(TAG, "Set %s band DRC: %.1fdB %.1f:1 attack %.1fms release %.0fms "
-                "(k=%.4f offsets=%s off1=%.2fdB off2=%.2fdB)",
+                "(k=%.4f offsets=%s off1=%.2fdB off2=%.2fdB) "
+                "raw: k=%.4f t1=%.4f t2=%.4f off1=%.4f off2=%.4f",
            DRC_BAND_TEXT[band], t1_db, s.ratio, s.attack_ms, s.release_ms, slope,
-           DRC_OFFSET_CONVENTION_TEXT[this->drc_offset_convention_], off1_db, off2_db);
+           DRC_OFFSET_CONVENTION_TEXT[this->drc_offset_convention_], off1_db, off2_db,
+           slope_raw, t1_raw, t2_raw, off1_raw, off2_raw);
   return true;
 }
 

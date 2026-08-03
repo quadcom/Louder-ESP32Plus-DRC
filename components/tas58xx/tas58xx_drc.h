@@ -283,6 +283,36 @@ static constexpr float DRC_THRESHOLD_MAX_DB =  -2.0f;
 // any permitted knee, so regions 2 and 3 form one continuous slope.
 static constexpr float DRC_T2_DB            =  -1.0f;
 
+//// The DSP's log domain is not dB
+//
+// Measured 2026-08-03 with a UMIK-1: at ratio 2 (k = -0.5) with both offsets
+// zero, a -18 dBFS tone came out 18.6 dB LOUDER, where gain = k*x predicts
+// +9 dB. Twice the authority, to within 0.6 dB. Separately, an offset written as
+// -10 dB buried a six-plateau staircase at least 46 dB into the noise floor, and
+// a -20 dB threshold never engaged at all - no plateau from -6 to -36 dBFS was
+// left flat.
+//
+// One model accounts for all three. The detector tracks log2 of the mean square,
+// and the resulting gain is applied as a power-of-two multiplier on amplitude:
+//
+//   u       = log2(P)      = level_dB / 3.0103      (10*log10 2)
+//   gain_dB = 6.0206 * gain_u                       (20*log10 2)
+//   gain_u  = k * u + O
+//        =>  gain_dB = 2 * k * level_dB + 6.0206 * O
+//
+// So every dB quantity needs dividing by the dB-per-unit of whichever side of
+// that equation it lands on. Thresholds are compared against u; offsets are
+// added to gain_u; the slope picks up a bare factor of two from the
+// power-to-amplitude conversion, being the one dimensionless quantity of the
+// three. That asymmetry is why ratio-only changes always behaved plausibly while
+// every attempt to add an offset overshot into silence.
+//
+// A -20 dB threshold written raw put the knee at -60 dB, which is why the whole
+// staircase sat in one region and nothing was ever flat.
+static constexpr float DRC_THRESHOLD_DB_PER_UNIT = 3.0103f;  // 10*log10 2
+static constexpr float DRC_OFFSET_DB_PER_UNIT    = 6.0206f;  // 20*log10 2
+static constexpr float DRC_SLOPE_POWER_FACTOR    = 2.0f;     // P vs amplitude
+
 static constexpr float DRC_RATIO_MIN        =   1.0f;   // 1:1 = no compression
 static constexpr float DRC_RATIO_MAX        =  20.0f;   // approaching a limiter
 

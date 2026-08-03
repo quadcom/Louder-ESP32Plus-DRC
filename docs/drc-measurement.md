@@ -282,12 +282,14 @@ Cheap additions, since the rig is already together:
   agreeing is much stronger evidence than one.
 - **Threshold −10 with ratio 2.** The knee should move up by exactly 10 dB and
   the spacing should not change.
-- **The other two offset conventions.** Switch the `DRC Offset Convention` entity
-  to `Zero` and to `Continuity` and repeat. Predictions: `Zero` should show
-  correct 1.50 dB spacing above the knee but the whole curve lifted, and no flat
-  region below the knee. `Continuity` should show a constant offset. This
-  converts the by-ear comparison into numbers, and would explain the original
-  quiet-piano result that the intercept model still doesn't account for.
+- **`Continuity` convention.** Switch the `DRC Offset Convention` entity and
+  repeat; it should differ from `Intercept` by a constant.
+
+  > **Do not use `Zero`.** It sets the offset to zero, which leaves `gain = k·x` —
+  > a boost that grows as the signal gets quieter, reaching 0 dBFS output at every
+  > input level. On 2026-08-03 it clipped the amp and tripped protection during
+  > the lead-in tone, at a measured +18.6 dB. It exists only as a diagnostic and
+  > has now served its purpose: that boost is what identified the doubled slope.
 - **Attack and release.** The step transitions are level steps of known size, so
   the settling time at each edge is the real time constant. That checks
   `α = 1/(fs·τ)` and, with it, whether `fs` is really 96 kHz — an 88.2 kHz DSP

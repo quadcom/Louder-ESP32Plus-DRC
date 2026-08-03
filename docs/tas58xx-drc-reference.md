@@ -345,12 +345,61 @@ That last point is why every ratio-only change behaved sensibly while every
 attempt to add an offset overshot into silence. The measurement only bounds the
 scale from below, though — 10 and 20 are not yet excluded.
 
-**Next test, no rebuild needed:** convention `Zero`, everything else identical.
-That removes the offset entirely, leaving `gain = k·x`, which stays on the meter.
-If the plateaus below −20 dBFS match Run 1 and the ones above are boosted, the
-threshold works and only the offset scale is wrong. If all six are boosted with
-uniform 3.0 dB spacing and no break at −20, then `x` is not in dB either and the
-thresholds need the same scale factor.
+#### Measured 2026-08-03, run 3 — the slope is doubled
+
+The `Zero` run never got past its lead-in tone: the amp clipped and tripped
+protection. The reference tone measured **98 dB** on the way there, against
+**79.4 dB** for the same −18 dBFS level with the DRC off. A **+18.6 dB boost**
+where `gain = k·x` at `k = −0.5` predicts +9.0 dB.
+
+Exactly double, to within 0.6 dB. And `gain = −1.0 × level` means
+`output = level − level = 0 dBFS` for *every* input, which is why it clipped
+immediately and why a quieter test file would not have helped.
+
+#### The log domain, and the correction
+
+One model accounts for all three anomalies. The detector tracks **log2 of the
+mean square**, and the gain comes back as a power-of-two multiplier on amplitude:
+
+```
+u       = log2(P)      = level_dB / 3.0103      (10·log10 2)
+gain_dB = 6.0206 · gain_u                       (20·log10 2)
+gain_u  = k·u + O
+     ⇒  gain_dB = 2·k·level_dB + 6.0206·O
+```
+
+| symptom | explanation |
+|---|---|
+| slope acts twice as hard | the power-to-amplitude conversion, `2·k` |
+| −10 offset cost ≥46 dB | `6.0206 × 10` = 60.2 dB |
+| threshold never engaged | −20 written raw puts the knee at −60 dB |
+
+`k` is the only dimensionless one of the three, which is why every ratio-only
+experiment behaved plausibly while every offset overshot into silence.
+
+So each dB quantity is divided by the dB-per-unit of whichever side of that
+equation it lands on — `DRC_THRESHOLD_DB_PER_UNIT`, `DRC_OFFSET_DB_PER_UNIT` and
+`DRC_SLOPE_POWER_FACTOR` in `tas58xx_drc.h`. `db_to_f9_23` was renamed
+`log_units_to_f9_23`; the arithmetic is unchanged, the name is no longer a lie.
+
+At threshold −20, ratio 2, Intercept the part now gets `k = −0.25`
+(`0xFFE00000`), `T1 = −6.6439` (`0xFCAD9620`), `off = −1.6610` (`0xFF2B6588`),
+which is `gain = −0.5·level − 10.0` — zero at the −20 threshold and −7 dB at
+−6 dBFS, matching the ideal `k·(level − T)` at every level.
+
+**A correction to what is written above.** Earlier in this section TI's reset
+values are used to argue thresholds are plain dB, on the grounds that
+`0xE7000000` decodes to −50.0 and `0xFE800000` to −3.0. That inference is void:
+those are round numbers in the *raw* domain whatever the raw domain means, and TI
+ships them with every slope at zero, so they never had to be correct in dB. In
+the log2 reading they are a threshold at −150 dB (never reached) and one at
+−9.03 dB. The measurement outranks the inference.
+
+**Still unmeasured:** the threshold scale, `10·log10 2`. It is derived from the
+model rather than observed, because no run has yet produced a knee. The
+corrected firmware makes that directly readable — the knee position is now the
+one thing left to check, and `gain` can no longer go positive, so it is safe to
+measure at normal listening levels.
 
 ---
 
