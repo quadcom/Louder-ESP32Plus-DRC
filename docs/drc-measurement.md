@@ -28,12 +28,11 @@ Sections 1–7 are the detailed version; if this section is enough, stop here.
 ### A. Put the file where the speaker can fetch it
 
 Use `drc-simple.wav` — 64 seconds, a 1 kHz tone that drops in six 6 dB steps,
-eight seconds each. Copy it into Home Assistant's `config/www/` folder (create
-that folder if it doesn't exist). It is then served at:
+eight seconds each.
 
-```
-http://homeassistant.local:8123/local/drc-simple.wav
-```
+Copy it into Home Assistant's **`config/media/`** folder (create that folder if it
+doesn't exist). That is the one Home Assistant lists in its own media browser, so
+playing it takes no YAML at all — see step D.
 
 To regenerate it:
 
@@ -71,16 +70,12 @@ straining.
 
 ### D. Run 1 — DRC switch OFF
 
-Start the file playing:
+Start the file playing: **Media** in the Home Assistant sidebar → **My media** →
+`drc-simple.wav` → choose **Speaker** → play. Two clicks to repeat it for
+run 2.
 
-```yaml
-action: media_player.play_media
-target:
-  entity_id: media_player.speaker
-data:
-  media_content_id: http://homeassistant.local:8123/local/drc-simple.wav
-  media_content_type: music
-```
+> If it isn't listed, the file isn't in `config/media/`. Nothing else is needed —
+> that folder is browsable out of the box.
 
 The first eight seconds are a reference tone — ignore them. Then six plateaus
 follow, eight seconds each. **Write down the SPL number in the middle of each
@@ -171,8 +166,18 @@ lines up with is itself a result — see §5.
 
 ## 2. Get it to the amp
 
-Copy the WAV into Home Assistant's `config/www/` directory, which is served at
-`/local/`:
+Simplest route, and no YAML: copy the WAV into `config/media/` and play it from
+**Media → My media** in the Home Assistant sidebar, choosing the speaker as the
+target.
+
+The alternative is `config/www/`, which is served at `/local/` without
+authentication, driven by a `media_player.play_media` action. That is worth using
+if you want the run scripted or repeatable from an automation — the URL is stable
+where a media-browser one is signed and temporary.
+
+Note this is an **action**, not a dashboard card: it goes in *Developer tools →
+Actions* (use `Go to YAML mode` to paste it), or in the `action:` block of a
+script or automation. Pasting it into a manual card will not work.
 
 ```yaml
 action: media_player.play_media
