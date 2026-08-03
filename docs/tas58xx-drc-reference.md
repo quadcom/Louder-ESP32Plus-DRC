@@ -620,6 +620,56 @@ actually changes, so after a reboot that restores the same values there is nothi
 in the log. Press **DRC Register Dump** instead — it is read-only and reports what
 is actually in the part.
 
+#### Measured 2026-08-03, runs 9 and 10 — ratio 2.09 delivered
+
+Unscaled slope, `k = −0.5000`, ratio 2, makeup 0.
+
+| run | threshold | gaps | mean |
+|---|---|---|---|
+| 9 | −40 dB | 2.4, 3.5, 2.3, 3.5, 2.2 | **2.780** |
+| 10 | −20 dB | 3.1, **12.9**, 5.8, 5.8, 5.8 | — |
+
+**Run 10 supplies its own control.** Its three plateaus below the knee step
+**5.80 dB**, matching the 5.78 measured in a separate session. Spacing is stable
+across sessions and immune to both EQ state and level, which makes it the only
+quantity here worth trusting without a same-session baseline.
+
+**The ratio is confirmed.** Run 9 held every plateau above the knee, so all five
+gaps measure the slope: `5.80 / 2.780 = ` **2.086** against 2.000 requested. Run 10's
+single above-knee gap gives 1.87. The slope, at last, is right.
+
+**But the offset does not anchor the knee at this slope.** Extrapolating run 10's
+own transparent region upwards, baseline-free:
+
+| plateau | transparent | correct curve | measured | error |
+|---|---|---|---|---|
+| −12 dBFS | 85.60 | 83.10 | 92.70 | **+9.60** |
+| −6 dBFS | 91.40 | 85.90 | 95.80 | **+9.90** |
+
+A boost of nearly 10 dB where a cut of 2.5–5.5 dB is due, consistent across both
+plateaus. Yet **run 6 anchored the same knee to within 0.25 dB** with the identical
+`off2 = −1.6610` register value, at half the slope. So the offset's authority is
+not simply proportional to what is written, and there is a term still unaccounted
+for.
+
+**Why this is not yet conclusive:** run 10's two above-knee plateaus sat at 92.7
+and 95.8 dB SPL, above the ~90 dB where run 1 showed the speaker compressing. That
+can only make a reading *low*, so the electrical excess is at least this large —
+but the run cannot be used to fit a constant. **Repeat threshold −20 about 10 dB
+quieter, with a ratio-1 control at the same volume in the same session.** Until
+then treat threshold −20 at high volume as capable of boosting, which is how the
+amp's protection tripped twice before.
+
+Two other things the session established, both about method rather than the part:
+
+- **EQ re-enables itself on reboot** on this board. It is a constant offset at
+  1 kHz, so it corrupts every cross-run absolute comparison while leaving spacing
+  untouched. It is the most likely source of the unexplained 2.55 dB between run 1
+  and the later runs. Turn it off before each run and re-check after any reboot.
+- **Clearing the build directory does not reset the device's stored settings.**
+  They survive a clean build and reflash; only the entity set changing can
+  invalidate them.
+
 ---
 
 ## 4. The three-band trap

@@ -274,16 +274,30 @@ Verified on hardware — Louder ESP32-S3 Plus, TAS5825M, 2026-08-02:
 That establishes what the amp *stores*, and the shape of what it *does* with it.
 The remaining item needs an audio measurement, not a register dump.
 
+- **The K-slope ↔ ratio mapping, and the threshold.** Measured 2026-08-03 with a
+  UMIK-1 and REW. `k = 1/ratio − 1` goes to the register **unscaled**, as SLOA148
+  says. Holding every plateau above the knee (threshold −40 dB, ratio 2) gave
+  2.780 dB steps against a transparent control's 5.80, i.e. a delivered ratio of
+  **2.09 against 2.00 requested**. Read the spacing against a control run, never
+  against the test file's nominal step: the file steps 6.00 dB and the room
+  delivered 5.78, and dividing by the nominal inflates the slope by 4%.
+
+  The threshold is right too, and **RMS-referenced** — the knee lands 3.01 dB above
+  the dialled value in sine peak terms. Below it the DRC is transparent, its
+  plateaus stepping 5.80 dB against the control's 5.78.
+
 Not yet verified on hardware:
 
-1. **The threshold scale, `10·log10 2`.** It comes from the log-domain model
-   rather than from observation, because no run has yet produced a knee to look
-   at — the pre-correction firmware put a −20 dB threshold at −60 dB, below
-   anything the test signal reached. **`docs/drc-measurement.md` is the
-   procedure**, and the knee position now reads this constant off directly: a
-   break at −10 dB instead of −20 means the divisor should be halved. The same
-   capture settles the **K-slope ↔ ratio mapping** from the plateau spacing, which
-   needs no calibration because every fixed offset in the chain cancels.
+1. **Whether the offset anchors the knee at full slope.** At threshold −20 with
+   the corrected slope, the region above the knee measured **9.6–9.9 dB high**
+   against an extrapolation of the same run's own transparent region — a boost
+   where a cut is due. The same offset register anchored that knee to within
+   0.25 dB at half the slope, so the offset's authority is not simply
+   proportional to what is written, and `DRC_OFFSET_DB_PER_UNIT` is provisional.
+   That run's above-knee plateaus sat at 92.7 and 95.8 dB SPL, above where this
+   speaker compresses, so **repeat it 10 dB quieter with a same-session control**
+   before drawing conclusions. Until then, treat threshold −20 at high volume as
+   capable of boosting.
 2. ~~**The offset continuity convention.**~~ **Superseded 2026-08-02 — offsets
    are y-intercepts, not curve values at the thresholds.** The runtime selector
    that compared the three candidates was removed on 2026-08-03: two of them left
