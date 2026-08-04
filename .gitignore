@@ -5,6 +5,18 @@
 #   git clone https://github.com/mrtoy-me/esphome-tas58xx         reference/esphome-tas58xx
 reference/
 
+# Your own installation: device YAMLs, register-dump logs, session notes.
+#
+# This repo ships a generic component plus example configs. Anything specific to
+# YOUR devices - real names, friendly names, room labels, speaker models, PSU
+# voltages, bench logs - belongs here and never gets committed. Copy an example
+# out of esphome/, rename it, and work on it in local/.
+#
+# Deliberately a whole directory rather than per-file entries: a new device file
+# is then ignored the moment you create it, instead of the next time someone
+# remembers to add a rule.
+local/
+
 # Real credentials. Commit secrets.yaml.example instead.
 secrets.yaml
 

@@ -14,10 +14,13 @@
 #   -> replace the contents with everything below the line, then Save.
 #
 # ENTITY IDS
-#   These assume the ESPHome friendly_name is "Speaker", giving
-#   number.speaker_drc_low_threshold and so on. Check yours in
-#   Developer tools -> States, filter on "drc". If your prefix differs, a
-#   find-and-replace of "speaker" is the whole job.
+#   The prefix comes from your ESPHome friendly_name. These match the example
+#   configs, which ship friendly_name: Speaker - giving
+#   number.speaker_drc_low_threshold and so on.
+#
+#   If you changed friendly_name (you should, on a real device), check yours in
+#   Developer tools -> States, filter on "drc", then find-and-replace "speaker"
+#   below with your own prefix. That is the whole job.
 #
 #   The per-row 'name:' overrides drop the redundant band word, since the
 #   section heading above already says which band it is. Delete them if you

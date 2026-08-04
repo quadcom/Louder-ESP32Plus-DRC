@@ -24,7 +24,7 @@
 # ============================================================
 
 substitutions:
-  name: louder-esp32-plus-drc
+  name: louder-esp32-plus-drc-sendspin
   friendly_name: Louder-ESP32-Plus
   task_stack_in_psram: "false"
 

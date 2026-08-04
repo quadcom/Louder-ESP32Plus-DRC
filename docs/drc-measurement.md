@@ -42,11 +42,11 @@ python tools/make_drc_staircase.py --start -6 --stop -36 --step 6 --seconds 8 --
 
 ### B. Set the amp up — this part is not optional
 
-In Home Assistant, on the Speaker device page:
+In Home Assistant, on the device page:
 
 | Control | Set to | Because |
 |---|---|---|
-| Media player volume | **90%**, and identical in both runs | ESPHome scales the audio in software *before* the DSP, so volume moves every level relative to a fixed knee. 100% has clipped the amp into protection on this rig; 90% has been the working setting throughout. |
+| Media player volume | **90%**, and identical in both runs | ESPHome scales the audio in software *before* the DSP, so volume moves every level relative to a fixed knee. 100% has clipped the amp into protection on the test rig; 90% has been the working setting throughout. |
 | EQ | flat / off | EQ gain at 1 kHz changes the level directly. |
 | `DRC` switch | **off** for run 1 | |
 | `DRC Low Makeup` | 0 dB | |
@@ -90,7 +90,7 @@ straining.
 ### D. Run 1 — DRC switch OFF
 
 Start the file playing: **Media** in the Home Assistant sidebar → **My media** →
-`drc-simple.wav` → choose **Speaker** → play. Two clicks to repeat it for
+`drc-simple.wav` → choose your device → play. Two clicks to repeat it for
 run 2.
 
 > If it isn't listed, the file isn't in `config/media/`. Nothing else is needed —
@@ -153,7 +153,6 @@ Two checks on the same six numbers:
   3.9 dB if run 1 delivers its usual 5.8 — not 4.0 dB from the file's nominal 6.0.
   That is a free re-check of the ratio, and it is independent of the offset scale.
 
-Send me the two columns and I'll do the arithmetic and write it up.
 
 ---
 
@@ -245,7 +244,7 @@ board re-enables its EQ on every reboot, which puts a constant offset on 1 kHz a
 silently invalidates any cross-session comparison of absolute level.
 
 The spacing should be **the same between every pair of plateaus.** It will not be
-the file's nominal 6.00 — this rig delivers 5.78 to 5.80 — and that measured figure,
+the file's nominal 6.00 — the test rig delivered 5.78 to 5.80 — and that measured figure,
 not the nominal, is what every later division uses. Getting this backwards inflated
 a slope constant by 4% and cost two runs.
 
@@ -254,7 +253,7 @@ Where the spacing isn't straight, the fault is not the DRC:
 - Collapsing at the *bottom* is the room noise floor. Ignore plateaus within about
   10 dB of a quiet-room reading; on the SPL meter that has meant everything under
   ~59 dB.
-- Collapsing at the *top* is the amp or the speaker compressing — on this rig,
+- Collapsing at the *top* is the amp or the speaker compressing — on the test rig,
   anything above about 90 dB SPL. Reduce the volume and run again, or discard the
   top plateaus. **Do not fit anything to a reading in that region**; two conclusions
   have already been retracted for resting on one.

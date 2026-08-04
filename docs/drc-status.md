@@ -74,7 +74,7 @@ Both are load-bearing and both are counter-intuitive; see the comment block in
 
 ## 3. The measurement rig
 
-Everything was measured with a UMIK-1 into REW, on the Speaker device.
+Everything was measured with a UMIK-1 into REW.
 Full procedure in `docs/drc-measurement.md`. The parts that matter:
 
 - **RTA on the 1 kHz bin**, not the SPL Meter. Rejects broadband room noise, so the
@@ -84,7 +84,7 @@ Full procedure in `docs/drc-measurement.md`. The parts that matter:
   device. No YAML, no automation.
 - Volume **90%**, identical in both passes. ESPHome scales PCM in software *before*
   the DSP, so volume moves every level relative to a fixed knee. 100% has clipped
-  the amp into protection on this rig.
+  the amp into protection on the test rig.
 
 ### Four error sources, all confirmed rather than suspected
 

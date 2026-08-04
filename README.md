@@ -5,10 +5,13 @@ Home Assistant entities through ESPHome. Built as a fork of
 `mrtoy-me/esphome-tas58xx`, the component the Sonocotta ESPHome packages already
 use for EQ, volume, mixer and fault reporting.
 
-**Primary target: Louder ESP32-S3 Plus, Sendspin, Ethernet** —
-[`esphome/louder-esp32-s3-plus-drc-sendspin.yaml`](esphome/louder-esp32-s3-plus-drc-sendspin.yaml).
-Fully self-contained, so it can be pasted straight into the ESPHome device code
-window with nothing copied alongside it.
+**Start here: [`esphome/louder-esp32-s3-plus-drc-sendspin.yaml`](esphome/louder-esp32-s3-plus-drc-sendspin.yaml)**
+(TAS5825M) or [`esphome/louder-esp32-s3-drc-sendspin.yaml`](esphome/louder-esp32-s3-drc-sendspin.yaml)
+(TAS5805M) — S3, Sendspin, Ethernet. Both are fully self-contained, so either can
+be pasted straight into the ESPHome device code window with nothing copied
+alongside it.
+
+Check which amp your board carries before picking one; see the next section.
 
 The plain-ESP32 configs are kept and still build. Nothing in the component is
 MCU-specific — the DSP register maps depend on the *amplifier* variant, not on
@@ -35,12 +38,14 @@ components/tas58xx/          fork of mrtoy-me/esphome-tas58xx, DRC added
   number/drc_number.{h,cpp}  the 15 DRC number entities
   switch/drc_enable_switch.* master DRC enable
 esphome/
-  louder-esp32-s3-plus-drc-sendspin.yaml        PRIMARY - S3, Sendspin, Ethernet,
-                                       self-contained, paste-ready
-  louder-esp32-plus-drc-sendspin.yaml  ESP32, Sendspin, WiFi
-  louder-esp32-plus-drc-full.yaml      ESP32, HA media_player, WiFi
-  louder-esp32-plus-drc.yaml           ESP32, amp only - compile check target
-  packages/dac-tas58xx-drc.yaml        DAC + DRC package, for the ESP32 configs
+  louder-esp32-s3-plus-drc-sendspin.yaml  S3 + TAS5825M, Sendspin, Ethernet,
+                                          self-contained, paste-ready
+  louder-esp32-s3-drc-sendspin.yaml       S3 + TAS5805M, same but the other amp
+  louder-esp32-plus-drc-sendspin.yaml     ESP32, Sendspin, WiFi
+  louder-esp32-plus-drc-full.yaml         ESP32, HA media_player, WiFi
+  louder-esp32-plus-drc.yaml              ESP32, amp only - config check target
+  packages/dac-tas58xx-drc.yaml           DAC + DRC package, for the ESP32 configs
+local/                            gitignored - put YOUR device configs here
 docs/drc-status.md                START HERE - what works, what is suspect, next
 docs/tas58xx-drc-reference.md     verified register maps and coefficient math
 docs/drc-measurement.md           measuring the real curve with REW + a UMIK-1
@@ -62,17 +67,27 @@ comes from the Sonocotta repo.
 
 Ready configs, all validated and compiled:
 
-| Config | MCU | Player | Net |
-| --- | --- | --- | --- |
-| `louder-esp32-s3-plus-drc-sendspin.yaml` | S3 | Sendspin | Ethernet |
-| `louder-esp32-plus-drc-sendspin.yaml` | ESP32 | Sendspin | WiFi |
-| `louder-esp32-plus-drc-full.yaml` | ESP32 | HA `media_player` | WiFi |
+| Config | MCU | Amp | Player | Net |
+| --- | --- | --- | --- | --- |
+| `louder-esp32-s3-plus-drc-sendspin.yaml` | S3 | TAS5825M | Sendspin | Ethernet |
+| `louder-esp32-s3-drc-sendspin.yaml` | S3 | TAS5805M | Sendspin | Ethernet |
+| `louder-esp32-plus-drc-sendspin.yaml` | ESP32 | TAS5825M | Sendspin | WiFi |
+| `louder-esp32-plus-drc-full.yaml` | ESP32 | TAS5825M | HA `media_player` | WiFi |
 
-The S3 config inlines the DAC + DRC block instead of including the package,
+Every one of them ships placeholder identity — `name`, `friendly_name` — and a
+deliberately conservative `analog_gain`. **Set all three for your own hardware
+before flashing.** Analog gain in particular is the hard ceiling on output swing
+and the one setting that will clip if it is left at a value chosen for someone
+else's supply; each config carries the voltage table inline.
+
+The two S3 configs inline the DAC + DRC block instead of including the package,
 because a config pasted into the ESPHome device code window cannot `!include` a
-local file. That also means its DAC substitutions are uncommented with real
-values — those defaults used to live inside the remote `dac-tas58xx.yaml` it
-replaces, and would otherwise be undefined.
+local file. That also means their DAC substitutions are spelled out with real
+values — those defaults used to live inside the remote `dac-tas58xx.yaml` they
+replace, and would otherwise be undefined.
+
+Keep your own edited copies in `local/`, which is gitignored precisely so your
+device names and room labels never end up in a commit.
 
 `esphome/louder-esp32-plus-drc.yaml` is amp-control-only, with no player. It is
 the fast compile-check target. **Do not flash it and expect DRC to work** — the

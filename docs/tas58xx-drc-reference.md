@@ -714,7 +714,7 @@ sources, all confirmed rather than suspected:
 
 At 3 dB steps the transparent-versus-2:1 difference is only 1.44 dB, inside that
 budget, so **3 dB steps were the wrong choice** — 6 dB steps are matched to what
-this rig resolves. Before fitting any more constants, the protocol needs
+the test rig resolves. Before fitting any more constants, the protocol needs
 tightening: see the RTA note in `docs/drc-measurement.md`.
 
 #### Measured 2026-08-03, run 12 — the first properly controlled run
