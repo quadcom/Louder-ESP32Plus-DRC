@@ -425,8 +425,35 @@ number:
 
 sensor:
   - platform: tas58xx
+    update_interval: 10s
     faults_cleared:
       name: "Times Faults Cleared"
+
+    # ---- Amplifier telemetry ----
+    # This is all of it on a TAS5805M. No level meter, no readback of the gain
+    # reduction the DRC or thermal foldback is applying, and no current, power or
+    # load measurement.
+    #
+    # pvdd_voltage, max_output_power and clip_headroom are NOT available here.
+    # They come from the PVDD ADC at 0x5E, which is a TAS5825M register with no
+    # equivalent in the TAS5805M map - configuring them fails the build. The
+    # sibling config louder-esp32-s3-plus-drc-sendspin.yaml has them.
+    #
+    # 0-4 = below warning / 112 / 122 / 134 / 146 degC. Anything above 0 means
+    # thermal foldback is already attenuating the output.
+    over_temp_warning_level:
+      name: Over Temperature Warning Level
+    # What the DAC detects on its own input, not what was configured. 0 = FS error.
+    sample_rate:
+      name: Detected Sample Rate
+
+# Reported power state: Deep Sleep, Sleep, Hi-Z or Play.
+text_sensor:
+  - platform: template
+    name: Amplifier State
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: return {id(external_dac)->power_state_name()};
 
 binary_sensor:
   - platform: tas58xx
@@ -454,6 +481,20 @@ binary_sensor:
     over_temp_warning:
       name: Over Temperature Warning
       id: over_temperature_warning
+
+    # Cycle by cycle current limiting engaged - the amp clamped a peak and carried
+    # on. The closest this part gets to reporting that the load is asking for more
+    # current than it can deliver.
+    left_channel_over_current_warning:
+      name: Left Channel Over Current Warning
+    right_channel_over_current_warning:
+      name: Right Channel Over Current Warning
+
+    # Auto mute state, inverted. "Something is playing", not a level.
+    left_channel_signal:
+      name: Left Channel Signal
+    right_channel_signal:
+      name: Right Channel Signal
 
 # Dumps the live DRC block to the log, then sweeps the crossover region -
 # pages 0x2A..0x2E on the TAS5805M - and reports every location shaped like a

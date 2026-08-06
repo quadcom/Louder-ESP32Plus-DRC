@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 namespace esphome::tas58xx {
 
 enum ControlState : uint8_t {
@@ -63,8 +65,45 @@ struct Tas58xxFault {
 #endif
 };
 
+// Everything the part will report about itself that is not a fault.
+//
+// This is the whole list. The TAS5825M has no level meter of any kind - no peak,
+// RMS or dBFS register anywhere in the control port map - and no readback of the
+// attenuation its DRC, AGL or thermal foldback is applying. PVDD_ADC is the only
+// analog measurement on the device: there is no output current, output power or
+// load impedance diagnostic, and no numeric die temperature, only the four OTW
+// threshold flags. Anything level related has to be measured before the stream
+// reaches the DAC.
+struct Tas58xxStatus {
+  uint8_t power_state{0xFF};  // POWER_STATE 0x68, ControlState encoding. 0xFF = not read yet
+  // AUTOMUTE_STATE 0x69, bit0 left / bit1 right, 1 = output is zero. Starts with
+  // both muted so the boot state publishes as "no signal" rather than claiming
+  // signal on a channel nothing has looked at yet.
+  uint8_t automute{0x03};
+  uint8_t fs_mon{0};          // FS_MON 0x37, bits 3-0 = detected sample rate
+  uint8_t warning{0};         // WARNING 0x73, OTW levels in bits 3-0 and CBC warnings in bits 5-4
+  uint8_t pvdd_raw{0};        // PVDD_ADC 0x5E, only meaningful in play
+
+  // Derived in read_status_registers_. NAN until PVDD has been read in play,
+  // which publishes as unavailable rather than as a misleading zero.
+  float pvdd_volts{NAN};
+  float max_output_power_w{NAN};
+  float clip_headroom_db{NAN};
+};
+
 static constexpr float TAS58XX_MIN_ANALOG_GAIN         = -15.5;
 static constexpr float TAS58XX_MAX_ANALOG_GAIN         = 0.0;
+
+// PVDD_ADC counts per volt: "PVDD Voltage = PVDD_ADC[7:0] / 8.428 (V)".
+static constexpr float TAS58XX_PVDD_ADC_PER_VOLT       = 8.428;
+
+// AGAIN 0x54 code 0 is "0 dB (29.5V peak voltage)", stepping -0.5dB per code, so
+// the peak output voltage at 0dBFS is 29.5 * 10^(gain/20).
+//
+// The per-step voltages tabulated in the datasheet and quoted in the device YAML
+// sit up to ~2% away from that curve - those are measured typicals, while this is
+// the register definition. Close enough for a headroom figure either way.
+static constexpr float TAS58XX_PEAK_VOLTS_AT_0DB       = 29.5;
 
 // set book and page registers
 static constexpr uint8_t TAS58XX_PAGE_SET              = 0x00;
@@ -80,7 +119,9 @@ static constexpr uint8_t TAS58XX_BCK_MON               = 0x38;
 static constexpr uint8_t TAS58XX_DIG_VOL_CTRL          = 0x4C;
 static constexpr uint8_t TAS58XX_ANA_CTRL              = 0x53;
 static constexpr uint8_t TAS58XX_AGAIN                 = 0x54;
+static constexpr uint8_t TAS58XX_PVDD_ADC              = 0x5E;  // TAS5825M only - no equivalent in the TAS5805M map
 static constexpr uint8_t TAS58XX_POWER_STATE           = 0x68;
+static constexpr uint8_t TAS58XX_AUTOMUTE_STATE        = 0x69;
 
 // TAS58XX FAULT constants
 static constexpr uint8_t TAS58XX_CHAN_FAULT            = 0x70;

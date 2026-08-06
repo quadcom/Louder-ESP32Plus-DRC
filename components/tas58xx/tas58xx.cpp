@@ -212,6 +212,7 @@ void Tas58xxComponent::update() {
     // publish all binary sensors as false on first update
 #ifdef USE_TAS58XX_BINARY_SENSOR
     this->publish_faults_();
+    this->publish_status_();
 #endif
 
     // read and process faults from next update
@@ -231,6 +232,19 @@ void Tas58xxComponent::update() {
     ESP_LOGW(TAG, "%s reading faults", ERROR);
     return;
   }
+
+  // Status is independent of the fault path - a failed read leaves the previous
+  // cached values in place rather than aborting the fault processing below.
+  if (!this->read_status_registers_()) {
+    ESP_LOGW(TAG, "%s reading status", ERROR);
+  }
+
+#ifdef USE_TAS58XX_BINARY_SENSOR
+  // Deferred for the same reason the channel and global faults are: spread the
+  // binary sensor publishes over separate loop iterations. An empty timeout name
+  // cannot be cancelled, so this never displaces a pending fault publish.
+  if (this->is_new_status_) this->set_timeout("", 15, [this]() { this->publish_status_(); });
+#endif
 
   // is there a fault that should be cleared next update
   this->is_fault_to_clear_ =
@@ -265,6 +279,7 @@ void Tas58xxComponent::dump_config() {
               "  Modulation: %s\n"
               "  DAC Mode: %s\n"
               "  Mixer Mode: %s\n"
+              "  Load Impedance: %.1f ohm\n"
               "  Volume Maximum: %idB\n"
               "  Volume Minimum: %idB\n"
               "  Ignore Fault: %s\n"
@@ -273,6 +288,7 @@ void Tas58xxComponent::dump_config() {
               this->tas58xx_modulation_scheme_ ? "1SPW Mode" : "BD Mode",
               this->tas58xx_dac_mode_ ? "PBTL" : "BTL",
               MIXER_MODE_TEXT[this->tas58xx_mixer_mode_],
+              this->tas58xx_load_impedance_,
               this->tas58xx_volume_max_, this->tas58xx_volume_min_,
               this->ignore_clock_faults_when_clearing_faults_ ? "CLOCK FAULTS" : "NONE",
               this->eq_refresh_ ? "MANUAL" : "AUTO"
@@ -313,6 +329,10 @@ void Tas58xxComponent::dump_config() {
   LOG_BINARY_SENSOR("  ", "OTP CRC Check Error", this->otp_crc_check_error_binary_sensor_);
   LOG_BINARY_SENSOR("  ", "Over Temperature Shutdown", this->over_temperature_shutdown_fault_binary_sensor_);
   LOG_BINARY_SENSOR("  ", "Over Temperature Warning", this->over_temperature_warning_binary_sensor_);
+  LOG_BINARY_SENSOR("  ", "Left Channel Over Current Warning", this->left_channel_over_current_warning_binary_sensor_);
+  LOG_BINARY_SENSOR("  ", "Right Channel Over Current Warning", this->right_channel_over_current_warning_binary_sensor_);
+  LOG_BINARY_SENSOR("  ", "Left Channel Signal", this->left_channel_signal_binary_sensor_);
+  LOG_BINARY_SENSOR("  ", "Right Channel Signal", this->right_channel_signal_binary_sensor_);
 #endif
 }
 
@@ -912,6 +932,12 @@ bool Tas58xxComponent::read_fault_registers_() {
   this->is_new_over_temperature_issue_ = (this->is_new_over_temperature_issue_ || (current_faults[3] != this->tas58xx_faults_.temperature_warning));
   this->tas58xx_faults_.temperature_warning = current_faults[3];
 
+  // temperature_warning above is a bool, which throws away which of the four OTW
+  // levels tripped and both cycle by cycle warning bits. Keep the raw register
+  // here rather than reading 0x73 a second time in read_status_registers_.
+  this->is_new_status_ = (current_faults[3] != this->tas58xx_status_.warning);
+  this->tas58xx_status_.warning = current_faults[3];
+
   bool new_fault_state; // reuse for temporary storage of new fault state
 
   // process clock_fault binary sensor
@@ -932,6 +958,123 @@ bool Tas58xxComponent::read_fault_registers_() {
 
   return true;
 }
+
+//// status processing functions
+
+bool Tas58xxComponent::read_status_registers_() {
+  // POWER_STATE and AUTOMUTE_STATE are adjacent, so one burst covers both.
+  uint8_t current_status[2];
+  if (!this->tas58xx_read_bytes_(TAS58XX_POWER_STATE, current_status, sizeof(current_status))) return false;
+
+  this->tas58xx_status_.power_state = current_status[0];
+
+  this->is_new_status_ = (this->is_new_status_ || (current_status[1] != this->tas58xx_status_.automute));
+  this->tas58xx_status_.automute = current_status[1];
+
+  if (!this->tas58xx_read_bytes_(TAS58XX_FS_MON, &this->tas58xx_status_.fs_mon, 1)) return false;
+
+#ifdef USE_TAS5825M_DAC
+  // PVDD_ADC only holds a measurement while the device is in play - outside play
+  // it reads 0x00, which is indistinguishable from a collapsed supply. Leave the
+  // derived figures at NAN so they publish as unavailable instead.
+  if (this->tas58xx_status_.power_state != CTRL_PLAY) {
+    this->tas58xx_status_.pvdd_raw = 0;
+    this->tas58xx_status_.pvdd_volts = NAN;
+    this->tas58xx_status_.max_output_power_w = NAN;
+    this->tas58xx_status_.clip_headroom_db = NAN;
+    return true;
+  }
+
+  if (!this->tas58xx_read_bytes_(TAS58XX_PVDD_ADC, &this->tas58xx_status_.pvdd_raw, 1)) return false;
+
+  if (this->tas58xx_status_.pvdd_raw == 0) {
+    // In play and still reading zero. Not a measurement, so do not publish one.
+    this->tas58xx_status_.pvdd_volts = NAN;
+    this->tas58xx_status_.max_output_power_w = NAN;
+    this->tas58xx_status_.clip_headroom_db = NAN;
+    return true;
+  }
+
+  const float pvdd = (float) this->tas58xx_status_.pvdd_raw / TAS58XX_PVDD_ADC_PER_VOLT;
+  this->tas58xx_status_.pvdd_volts = pvdd;
+
+  // Two independent ceilings on the output swing: the rail itself, and the peak
+  // voltage the configured analog gain maps 0dBFS onto. Whichever is lower is the
+  // one that actually limits, so size the power figure from that.
+  const float peak_volts_at_0dbfs = TAS58XX_PEAK_VOLTS_AT_0DB * powf(10.0f, this->tas58xx_analog_gain_ / 20.0f);
+  const float peak_volts = (pvdd < peak_volts_at_0dbfs) ? pvdd : peak_volts_at_0dbfs;
+
+  // Sine into a resistive load: Vrms = Vpeak / sqrt(2), so P = Vpeak^2 / 2R. One
+  // channel in BTL. In PBTL the two halves drive a single load, which is the same
+  // voltage into the same impedance - one figure, not two.
+  this->tas58xx_status_.max_output_power_w = (peak_volts * peak_volts) / (2.0f * this->tas58xx_load_impedance_);
+
+  this->tas58xx_status_.clip_headroom_db = 20.0f * log10f(pvdd / peak_volts_at_0dbfs);
+#endif
+
+  return true;
+}
+
+uint8_t Tas58xxComponent::otw_level() {
+  // Bits 3-0 are the four thresholds, lowest first, and they are cumulative -
+  // report the highest one asserted.
+  const uint8_t levels = this->tas58xx_status_.warning & 0x0F;
+  if (levels == 0) return 0;
+
+  uint8_t level = 0;
+  for (uint8_t bit = 0; bit < 4; bit++) {
+    if (levels & (1 << bit)) level = bit + 1;
+  }
+  return level;
+}
+
+uint32_t Tas58xxComponent::detected_sample_rate() {
+  // FS_MON bits 3-0. Everything the datasheet leaves reserved reads as 0 here,
+  // as does an FS error. 44.1 and 88.2kHz share the 48 and 96kHz codes.
+  switch (this->tas58xx_status_.fs_mon & 0x0F) {
+    case 0x04: return 16000;
+    case 0x06: return 32000;
+    case 0x09: return 48000;
+    case 0x0B: return 96000;
+    case 0x0D: return 192000;
+    default:   return 0;
+  }
+}
+
+const char* Tas58xxComponent::power_state_name() {
+  switch (this->tas58xx_status_.power_state) {
+    case CTRL_DEEP_SLEEP: return "Deep Sleep";
+    case CTRL_SLEEP:      return "Sleep";
+    case CTRL_HI_Z:       return "Hi-Z";
+    case CTRL_PLAY:       return "Play";
+    default:              return "Unknown";
+  }
+}
+
+bool Tas58xxComponent::channel_has_signal(Channels channel) {
+  const uint8_t automute_bit = (channel == LEFT_CHANNEL) ? (1 << 0) : (1 << 1);
+  return !(this->tas58xx_status_.automute & automute_bit);
+}
+
+#ifdef USE_TAS58XX_BINARY_SENSOR
+void Tas58xxComponent::publish_status_() {
+  if (this->left_channel_over_current_warning_binary_sensor_ != nullptr) {
+    this->left_channel_over_current_warning_binary_sensor_->publish_state(this->tas58xx_status_.warning & (1 << 5));
+  }
+
+  if (this->right_channel_over_current_warning_binary_sensor_ != nullptr) {
+    this->right_channel_over_current_warning_binary_sensor_->publish_state(this->tas58xx_status_.warning & (1 << 4));
+  }
+
+  if (this->left_channel_signal_binary_sensor_ != nullptr) {
+    this->left_channel_signal_binary_sensor_->publish_state(this->channel_has_signal(LEFT_CHANNEL));
+  }
+
+  if (this->right_channel_signal_binary_sensor_ != nullptr) {
+    this->right_channel_signal_binary_sensor_->publish_state(this->channel_has_signal(RIGHT_CHANNEL));
+  }
+}
+#endif
 
 //// low level functions
 

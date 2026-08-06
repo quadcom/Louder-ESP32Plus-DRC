@@ -53,6 +53,10 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
 
   void config_mixer_mode(MixerMode mixer_mode) {this->tas58xx_mixer_mode_ = mixer_mode; }
 
+  // Nominal speaker impedance in ohms. Only used to turn the measured PVDD into
+  // a maximum output power figure - nothing is written to the device.
+  void config_load_impedance(float ohms) { this->tas58xx_load_impedance_ = ohms; }
+
   void config_refresh_eq(EqRefreshMode eq_refresh) { this->eq_refresh_ = eq_refresh; }
 
   //// DRC configuration from YAML
@@ -96,6 +100,18 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
 
   SUB_BINARY_SENSOR(over_temperature_shutdown_fault)
   SUB_BINARY_SENSOR(over_temperature_warning)
+
+  // Cycle by cycle current limiting kicked in on that channel. A warning, not a
+  // fault: the amp limits the peak and carries on, so this is the closest thing
+  // the part has to telling you the load is drawing more than it can deliver.
+  SUB_BINARY_SENSOR(left_channel_over_current_warning)
+  SUB_BINARY_SENSOR(right_channel_over_current_warning)
+
+  // Inverted AUTOMUTE_STATE - true means the channel is passing something. Only
+  // as good as the auto mute threshold and timer, so treat it as "playing", not
+  // as a level measurement.
+  SUB_BINARY_SENSOR(left_channel_signal)
+  SUB_BINARY_SENSOR(right_channel_signal)
   #endif
 
   void enable_dac(bool enable);
@@ -166,6 +182,35 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
 
   uint32_t times_faults_cleared();
 
+  //// status readback, all served from the cache refreshed by 'update'
+
+  // Measured supply voltage, or NAN when the device is not in play. PVDD_ADC
+  // reads 0x00 outside play, and publishing that as 0V would look like a dead
+  // supply rather than a missing measurement.
+  float pvdd_voltage() { return this->tas58xx_status_.pvdd_volts; }
+
+  // Maximum output power per channel into the configured load impedance, taking
+  // whichever of the rail and the analog gain ceiling binds first.
+  float max_output_power() { return this->tas58xx_status_.max_output_power_w; }
+
+  // Rail margin against the configured analog gain, in dB. Negative means the
+  // analog gain is set higher than the measured supply can actually deliver, so
+  // full scale material clips on the rail.
+  float clip_headroom() { return this->tas58xx_status_.clip_headroom_db; }
+
+  // Highest asserted over temperature warning level, 0 to 4:
+  // 1 = 112C, 2 = 122C, 3 = 134C, 4 = 146C. Thermal foldback is attenuating from
+  // level 1 upwards, which is attenuation you cannot otherwise see.
+  uint8_t otw_level();
+
+  // Sample rate the device is detecting on its own input, in Hz. 0 means either
+  // an FS error or a code the part documents as reserved.
+  uint32_t detected_sample_rate();
+
+  const char* power_state_name();
+
+  bool channel_has_signal(Channels channel);
+
   bool using_auto_eq_refresh();
   bool using_manual_eq_refresh();
 
@@ -204,9 +249,15 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
    void publish_faults_();
    void publish_channel_faults_();
    void publish_global_faults_();
+   void publish_status_();
    #endif
 
    bool read_fault_registers_();
+
+   // Non-fault status: power state, auto mute, detected sample rate and, on the
+   // TAS5825M, the PVDD ADC. Runs after read_fault_registers_ each update, which
+   // is where the raw WARNING register is captured from the fault burst.
+   bool read_status_registers_();
 
 
    //// DRC internals
@@ -312,6 +363,13 @@ class Tas58xxComponent : public audio_dac::AudioDac, public PollingComponent, pu
    Tas58xxFault tas58xx_faults_;  // current state of faults
 
    uint32_t times_faults_cleared_{0}; // counts number of times the faults register is cleared (used for publishing to sensor)
+
+   //// status processing variables
+   Tas58xxStatus tas58xx_status_;  // current non-fault status, refreshed by 'update'
+
+   bool is_new_status_{true};  // conditionally publish status binary sensors - initially true so published on first update
+
+   float tas58xx_load_impedance_{8.0f};  // YAML configured nominal speaker impedance, ohms
 
    //// utility variables used by loop, update and dump_config
    bool update_delay_finished_{false}; // use to indicate if delay before starting 'update' starting is complete

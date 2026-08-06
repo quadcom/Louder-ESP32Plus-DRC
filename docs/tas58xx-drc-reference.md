@@ -1046,6 +1046,55 @@ Sign inversion on A1/A2, factor of 2 on B1/A1.
 
 ---
 
+## 5b. What the part will tell you about itself
+
+Settled question, since it bears directly on §3: **the DRC cannot be observed from
+the outside.** There is no register anywhere in the TAS5825M control port map that
+reports signal level or the attenuation the DRC, AGL or thermal foldback is
+applying. Checked against the full §9.6.1 register map in SLASEH7H, not inferred.
+So the only way to see what a compressor curve is doing remains what §3 already
+does: play material and measure the acoustic result.
+
+Nor is there any current, power or load-impedance measurement. Those live in other
+families - TAS2770/TAS2780 have I/V sense, TAS6424 has load diagnostics. The DSP
+memory map in SLAA786A is write-only coefficient space, not telemetry.
+
+What does exist, all of it, and all now surfaced by the component:
+
+| Reg | Name | Content | Notes |
+|---|---|---|---|
+| `0x5E` | `PVDD_ADC` | `PVDD = raw / 8.428` V | **TAS5825M only.** Reads `0x00` outside play, so the component publishes NAN unless `POWER_STATE == 3` |
+| `0x73` | `WARNING` | bits 3-0 = OTW 1-4 at 112 / 122 / 134 / 146 °C; bit 5 = left CBC, bit 4 = right | Thermal foldback is attenuating from OTW1 up. The CBC bits are the only hint the load is drawing more than the amp will give |
+| `0x69` | `AUTOMUTE_STATE` | bit 1 right / bit 0 left, 1 = output zero | Crude signal-present flag, gated by the auto mute threshold and timer |
+| `0x68` | `POWER_STATE` | 0 deep sleep, 1 sleep, 2 Hi-Z, 3 play | Same encoding as `ControlState` |
+| `0x37` | `FS_MON` | bits 3-0: `0` FS error, `4`=16k, `6`=32k, `9`=48k, `B`=96k, `D`=192k | Detected, not configured. 44.1/88.2 share the 48/96k codes |
+
+Derived from `PVDD_ADC` plus the `AGAIN` setting, since together they give the real
+output ceiling the DRC is working against. `AGAIN` code 0 is "0 dB (29.5 V peak)",
+so 0 dBFS maps to `29.5 · 10^(gain/20)` volts:
+
+```
+V_peak_eff       = min(PVDD, 29.5 · 10^(again_dB/20))
+max_output_power = V_peak_eff² / (2 · load_impedance)     # W, one channel, BTL
+clip_headroom    = 20 · log10(PVDD / (29.5 · 10^(again_dB/20)))
+```
+
+`clip_headroom` negative means `analog_gain` is set above what the supply can
+deliver and full-scale material clips on the rail. The datasheet's tabulated
+per-step voltages sit up to ~2% off that curve - those are measured typicals, the
+formula is the register definition.
+
+**Level, as far as it can be had.** `components/audio_level/` is a pass-through
+speaker that meters the stream on its way to the DAC - windowed RMS and peak dBFS
+per channel. It measures the amplifier's digital *input*: digital volume, EQ, the
+DRC and thermal foldback all happen after it, inside the chip, and none of them
+are observable. Comparing a reading against a DRC threshold needs the digital
+volume added back, and whether that is the right correction depends on where the
+volume stage sits relative to the DRC in Process Flow 1 - not established, so the
+component deliberately does not apply it.
+
+---
+
 ## 6. Sources
 
 | Doc | ID | Used for |
@@ -1054,6 +1103,8 @@ Sign inversion on A1/A2, factor of 2 on B1/A1.
 | TAS5805M/5806M/5806MD Process Flows | **SLOA263A** | 5805M DSP memory maps, BQ normalisation |
 | TAS57xx Dynamic Range Control | **SLOA148** | ratio↔k slope derivation, offset semantics |
 | TAS5825M datasheet | SLASEQ8 | book 0 register map, startup/shutdown |
+| TAS5825M datasheet, rev H | **SLASEH7H** | §9.6.1 register map - the telemetry survey in §5b, `PVDD_ADC` scaling, OTW thresholds, `AGAIN` peak voltage |
+| TAS5825M Advanced Features | **SLAA846** | thermal foldback, PVDD sensing, hybrid modulation |
 | General Tuning Guide for TAS58xx | SLAA894 | fixed-point formats, gain staging |
 
 Local verification:

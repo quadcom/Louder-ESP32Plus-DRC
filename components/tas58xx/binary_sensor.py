@@ -4,6 +4,7 @@ import esphome.config_validation as cv
 from esphome.core import TimePeriod
 from esphome.const import (
     DEVICE_CLASS_PROBLEM,
+    DEVICE_CLASS_SOUND,
     ENTITY_CATEGORY_DIAGNOSTIC,
 )
 
@@ -20,6 +21,10 @@ CONF_PVDD_OVER_VOLTAGE = "pcdd_over_voltage"
 CONF_PVDD_UNDER_VOLTAGE = "pcdd_under_voltage"
 CONF_OVER_TEMP_SHUTDOWN = "over_temp_shutdown"
 CONF_OVER_TEMP_WARNING = "over_temp_warning"
+CONF_LEFT_CHANNEL_OVER_CURRENT_WARNING = "left_channel_over_current_warning"
+CONF_RIGHT_CHANNEL_OVER_CURRENT_WARNING = "right_channel_over_current_warning"
+CONF_LEFT_CHANNEL_SIGNAL = "left_channel_signal"
+CONF_RIGHT_CHANNEL_SIGNAL = "right_channel_signal"
 
 from .audio_dac import CONF_TAS58XX_ID, tas58xx_ns, Tas58xxComponent
 
@@ -86,6 +91,27 @@ CONFIG_SCHEMA = {
         device_class=DEVICE_CLASS_PROBLEM,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
+
+    # Cycle by cycle current limiting engaged. A warning rather than a fault:
+    # the amp clamps the peak and keeps playing.
+    cv.Optional(CONF_LEFT_CHANNEL_OVER_CURRENT_WARNING): binary_sensor.binary_sensor_schema(
+        device_class=DEVICE_CLASS_PROBLEM,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    cv.Optional(CONF_RIGHT_CHANNEL_OVER_CURRENT_WARNING): binary_sensor.binary_sensor_schema(
+        device_class=DEVICE_CLASS_PROBLEM,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+
+    # Auto mute state, inverted. "Something is playing", not a level.
+    cv.Optional(CONF_LEFT_CHANNEL_SIGNAL): binary_sensor.binary_sensor_schema(
+        device_class=DEVICE_CLASS_SOUND,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    cv.Optional(CONF_RIGHT_CHANNEL_SIGNAL): binary_sensor.binary_sensor_schema(
+        device_class=DEVICE_CLASS_SOUND,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
 }
 
 async def to_code(config):
@@ -140,4 +166,20 @@ async def to_code(config):
     if has_fault_config := config.get(CONF_OVER_TEMP_WARNING):
         sens = await binary_sensor.new_binary_sensor(has_fault_config)
         cg.add(tas58xx_component.set_over_temperature_warning_binary_sensor(sens))
+
+    if has_warning_config := config.get(CONF_LEFT_CHANNEL_OVER_CURRENT_WARNING):
+        sens = await binary_sensor.new_binary_sensor(has_warning_config)
+        cg.add(tas58xx_component.set_left_channel_over_current_warning_binary_sensor(sens))
+
+    if has_warning_config := config.get(CONF_RIGHT_CHANNEL_OVER_CURRENT_WARNING):
+        sens = await binary_sensor.new_binary_sensor(has_warning_config)
+        cg.add(tas58xx_component.set_right_channel_over_current_warning_binary_sensor(sens))
+
+    if has_signal_config := config.get(CONF_LEFT_CHANNEL_SIGNAL):
+        sens = await binary_sensor.new_binary_sensor(has_signal_config)
+        cg.add(tas58xx_component.set_left_channel_signal_binary_sensor(sens))
+
+    if has_signal_config := config.get(CONF_RIGHT_CHANNEL_SIGNAL):
+        sens = await binary_sensor.new_binary_sensor(has_signal_config)
+        cg.add(tas58xx_component.set_right_channel_signal_binary_sensor(sens))
 

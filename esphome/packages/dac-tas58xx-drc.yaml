@@ -230,8 +230,38 @@ number:
 
 sensor:
   - platform: tas58xx
+    update_interval: 10s
     faults_cleared:
       name: "Times Faults Cleared"
+
+    # ---- Amplifier telemetry ----
+    # This is all of it. Neither part has a level meter, any readback of the gain
+    # reduction its DRC or thermal foldback is applying, or any current, power or
+    # load measurement. On the TAS5825M the PVDD ADC is the one analog reading.
+    #
+    # 0-4 = below warning / 112 / 122 / 134 / 146 degC. Anything above 0 means
+    # thermal foldback is attenuating the output.
+    over_temp_warning_level:
+      name: Over Temperature Warning Level
+    # What the DAC detects on its own input, not what was configured. 0 = FS error.
+    sample_rate:
+      name: Detected Sample Rate
+
+    # NOT HERE, deliberately: pvdd_voltage, max_output_power and clip_headroom.
+    # PVDD_ADC (0x5E) exists only on the TAS5825M, and this package is shared with
+    # TAS5805M boards through ${tas58xx_variant} - configuring them here would fail
+    # the build for half its users. Add them in the device YAML on a TAS5825M:
+    #
+    #   sensor:
+    #     - platform: tas58xx
+    #       pvdd_voltage:
+    #         name: PVDD Voltage
+    #       max_output_power:
+    #         name: Maximum Output Power
+    #       clip_headroom:
+    #         name: Clip Headroom
+    #
+    # and set load_impedance on the audio_dac to match the speakers.
 
 binary_sensor:
   - platform: tas58xx
@@ -259,6 +289,30 @@ binary_sensor:
     over_temp_warning:
       name: Over Temperature Warning
       id: over_temperature_warning
+
+    # Cycle by cycle current limiting engaged - the amp clamped a peak and kept
+    # playing. The closest the part gets to reporting that the load is asking for
+    # more than it can deliver.
+    left_channel_over_current_warning:
+      name: Left Channel Over Current Warning
+    right_channel_over_current_warning:
+      name: Right Channel Over Current Warning
+
+    # Auto mute state, inverted. "Something is playing", not a level.
+    left_channel_signal:
+      name: Left Channel Signal
+    right_channel_signal:
+      name: Right Channel Signal
+
+# Reported power state of the amplifier: Deep Sleep, Sleep, Hi-Z or Play. A
+# template entity rather than a platform - it is one string, and the repo already
+# reaches into the component with lambdas for the DRC controls.
+text_sensor:
+  - platform: template
+    name: Amplifier State
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: return {id(external_dac)->power_state_name()};
 
 # Dumps the live DRC block to the log, then sweeps the crossover region and
 # reports every location shaped like a resting pass-through biquad.

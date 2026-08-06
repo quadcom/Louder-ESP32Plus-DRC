@@ -125,6 +125,11 @@ substitutions:
   # or more and merely leaves headroom unused on a higher one.
   tas58xx_analog_gain: -4db
 
+  # Nominal speaker impedance. Nothing is written to the amplifier - this only
+  # scales the Maximum Output Power sensor, which is measured PVDD turned into
+  # watts. Set it to your speakers or that figure is fiction.
+  tas58xx_load_impedance: "8"
+
   tas58xx_volume_max: 0dB
   tas58xx_volume_min: -50dB
   tas58xx_refresh_eq: AUTO
@@ -236,9 +241,48 @@ network:
 # copied alongside it. Exports the same ids the other Sonocotta packages bind to
 # (external_dac, enable_dac, over_temperature_warning, tas58xx_eq_mode_select).
 
+# ===== Input level metering =====
+# The TAS5825M cannot report level - see the sensor block below. This inserts a
+# measuring pass-through into the speaker chain the audio.yaml package builds,
+# turning mixer -> i2s into mixer -> meter -> i2s. Every byte and every lifecycle
+# call is forwarded untouched; volume still reaches the DAC through it.
+#
+# WHAT IT MEASURES: the amplifier's digital INPUT. Not its output. Digital volume,
+# EQ, the DRC and thermal foldback all happen after this point inside the chip and
+# none of them are observable. A reading of -20 dBFS here says the stream is 20 dB
+# below full scale, not that the speakers are 20 dB down.
+#
+# Done with !extend rather than by inlining audio.yaml so the upstream package
+# stays in the remote list and keeps tracking upstream.
+speaker:
+  - platform: audio_level
+    id: level_meter
+    output_speaker: i2s_speaker_id
+    update_interval: 500ms
+    # Stated rather than inherited from i2s_speaker_id. The mixer above validates
+    # its output speaker's format, and that happens before the meter's own
+    # inheritance runs, so leaving these out fails the build. Match audio.yaml.
+    sample_rate: 48000
+    num_channels: 2
+    bits_per_sample: 16
+    # Each reading covers the window that just closed - a windowed RMS and a true
+    # window peak, not a decaying meter.
+    left_rms:
+      name: Level Left RMS
+    right_rms:
+      name: Level Right RMS
+    left_peak:
+      name: Level Left Peak
+    right_peak:
+      name: Level Right Peak
+
+  # Redirect the mixer's output through the meter.
+  - id: !extend mixer_speaker_id
+    output_speaker: level_meter
+
 external_components:
   - source: github://quadcom/Louder-ESP32Plus-DRC@${tas58xx_drc_branch}
-    components: [tas58xx]
+    components: [tas58xx, audio_level]
     # 0s = re-fetch on every build. With a cache window, a push can take that
     # long to reach the device and you end up debugging code you are not
     # running. Costs one git fetch per build. Pin tas58xx_drc_branch to a commit
@@ -260,6 +304,7 @@ audio_dac:
     dac_mode: ${tas58xx_dac_mode}
     mixer_mode: ${tas58xx_mixer_mode}
     analog_gain: ${tas58xx_analog_gain}
+    load_impedance: ${tas58xx_load_impedance}
     volume_max: ${tas58xx_volume_max}
     volume_min: ${tas58xx_volume_min}
     refresh_eq: ${tas58xx_refresh_eq}
@@ -404,8 +449,44 @@ number:
 
 sensor:
   - platform: tas58xx
+    update_interval: 10s
     faults_cleared:
       name: "Times Faults Cleared"
+
+    # ---- Amplifier telemetry ----
+    # This is all of it. The TAS5825M has no level meter of any kind, no readback
+    # of the attenuation its DRC or thermal foldback is applying, and no current,
+    # power or load measurement. The PVDD ADC is its one analog reading.
+    #
+    # Measured supply voltage. Unavailable unless the amp is in play - the PVDD
+    # ADC reads zero otherwise, and 0V would look like a dead supply.
+    pvdd_voltage:
+      name: PVDD Voltage
+    # Per channel into load_impedance above, sized from whichever of the measured
+    # rail and the analog gain ceiling binds first.
+    max_output_power:
+      name: Maximum Output Power
+    # Rail margin against tas58xx_analog_gain. NEGATIVE means the analog gain is
+    # set higher than the supply can deliver, so full scale material clips on the
+    # rail - the exact mistake the analog gain table above warns about, now
+    # checked against the real supply instead of a guess at it.
+    clip_headroom:
+      name: Clip Headroom
+    # 0-4 = below warning / 112 / 122 / 134 / 146 degC. Anything above 0 means
+    # thermal foldback is already attenuating the output.
+    over_temp_warning_level:
+      name: Over Temperature Warning Level
+    # What the DAC detects on its own input, not what was configured. 0 = FS error.
+    sample_rate:
+      name: Detected Sample Rate
+
+# Reported power state: Deep Sleep, Sleep, Hi-Z or Play.
+text_sensor:
+  - platform: template
+    name: Amplifier State
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: return {id(external_dac)->power_state_name()};
 
 binary_sensor:
   - platform: tas58xx
@@ -433,6 +514,20 @@ binary_sensor:
     over_temp_warning:
       name: Over Temperature Warning
       id: over_temperature_warning
+
+    # Cycle by cycle current limiting engaged - the amp clamped a peak and carried
+    # on. The closest this part gets to reporting that the load is asking for more
+    # current than it can deliver.
+    left_channel_over_current_warning:
+      name: Left Channel Over Current Warning
+    right_channel_over_current_warning:
+      name: Right Channel Over Current Warning
+
+    # Auto mute state, inverted. "Something is playing", not a level.
+    left_channel_signal:
+      name: Left Channel Signal
+    right_channel_signal:
+      name: Right Channel Signal
 
 # Dumps the live DRC block to the log, then sweeps the crossover region and
 # reports every location shaped like a resting pass-through biquad.

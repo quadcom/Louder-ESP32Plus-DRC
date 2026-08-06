@@ -24,6 +24,7 @@ CONF_MODULATION = "modulation"
 CONF_TAS58XX_DAC = "tas58xx_dac"
 CONF_IGNORE_FAULT = "ignore_fault"
 CONF_MIXER_MODE = "mixer_mode"
+CONF_LOAD_IMPEDANCE = "load_impedance"
 CONF_REFRESH_EQ = "refresh_eq"
 CONF_VOLUME_MIN = "volume_min"
 CONF_VOLUME_MAX = "volume_max"
@@ -144,6 +145,12 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_MIXER_MODE, default="STEREO"): cv.enum(
                         MIXER_MODES, upper=True
             ),
+            # Nominal speaker impedance in ohms. Nothing is written to the device -
+            # it only turns the measured PVDD into a maximum output power figure for
+            # the max_output_power sensor.
+            cv.Optional(CONF_LOAD_IMPEDANCE, default=8.0): cv.All(
+                        cv.resistance, cv.float_range(min=1.0, max=32.0)
+            ),
             cv.Optional(CONF_REFRESH_EQ, default="AUTO"): cv.enum(
                         EQ_REFRESH_MODES, upper=True
             ),
@@ -230,6 +237,7 @@ async def to_code(config):
     cg.add(var.config_modulation_scheme(config[CONF_MODULATION]))
     cg.add(var.config_ignore_fault_mode(config[CONF_IGNORE_FAULT]))
     cg.add(var.config_mixer_mode(config[CONF_MIXER_MODE]))
+    cg.add(var.config_load_impedance(config[CONF_LOAD_IMPEDANCE]))
     cg.add(var.config_refresh_eq(config[CONF_REFRESH_EQ]))
     cg.add(var.config_volume_max(config[CONF_VOLUME_MAX]))
     cg.add(var.config_volume_min(config[CONF_VOLUME_MIN]))
