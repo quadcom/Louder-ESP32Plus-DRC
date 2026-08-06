@@ -32,6 +32,13 @@ class LevelMeterSpeaker final : public PollingComponent, public speaker::Speaker
   void setup() override;
   void dump_config() override;
 
+  // Keeps state_ in step with the speaker below. Speaker::is_running() and
+  // is_stopped() read a plain member rather than calling a virtual, so the chain
+  // above sees this meter's state_ and never the real one - which matters because
+  // the mixer and its source speakers both use those to decide when a stream has
+  // finished draining.
+  void loop() override;
+
   // Publishes the window that just closed and starts a new one.
   void update() override;
 
@@ -84,6 +91,11 @@ class LevelMeterSpeaker final : public PollingComponent, public speaker::Speaker
   // the bottom 16 bits, which puts the noise floor of the meter at about -96 dBFS -
   // far below anything a level meter is used to look at.
   void accumulate_(const uint8_t *data, size_t length);
+
+  // Hands our stream format to the speaker below, which cannot receive it any other
+  // way. See the comment on the definition - this is the whole reason a pass-through
+  // speaker is not simply transparent.
+  void forward_stream_info_();
 
   speaker::Speaker *output_speaker_{nullptr};
 

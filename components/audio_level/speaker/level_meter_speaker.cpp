@@ -31,7 +31,35 @@ void LevelMeterSpeaker::dump_config() {
   LOG_UPDATE_INTERVAL(this);
 }
 
+void LevelMeterSpeaker::loop() {
+  if (this->output_speaker_->is_running()) {
+    this->state_ = speaker::STATE_RUNNING;
+  } else if (this->output_speaker_->is_stopped()) {
+    this->state_ = speaker::STATE_STOPPED;
+  } else if (this->state_ != speaker::STATE_STOPPING) {
+    // Mid transition. Only running and stopped are distinguishable from outside, so
+    // anything else just has to read as neither - but keep a stop we were told about
+    // rather than reporting it as a start.
+    this->state_ = speaker::STATE_STARTING;
+  }
+}
+
+void LevelMeterSpeaker::forward_stream_info_() {
+  // Speaker::set_audio_stream_info() is NOT virtual, so the mixer's call to it landed
+  // on this meter and stopped there - the speaker below never heard about the format.
+  // Push it down while that speaker is stopped, which is the only point it is safe to
+  // change and the point it matters: i2s_audio::play() auto-starts, and the task then
+  // configures the I2S driver from whatever stream info it holds. Without this it
+  // holds the AudioStreamInfo default - 16 bit, 1 channel, 16 kHz - and a 48 kHz
+  // stereo stream comes out as a slow warble with the channels interleaved wrongly.
+  if (this->output_speaker_->is_stopped()) {
+    this->output_speaker_->set_audio_stream_info(this->audio_stream_info_);
+  }
+}
+
 size_t LevelMeterSpeaker::play(const uint8_t *data, size_t length, TickType_t ticks_to_wait) {
+  this->forward_stream_info_();
+
   const size_t written = this->output_speaker_->play(data, length, ticks_to_wait);
 
   // Measure what was actually accepted, not what was offered. A short write means
@@ -41,20 +69,23 @@ size_t LevelMeterSpeaker::play(const uint8_t *data, size_t length, TickType_t ti
   return written;
 }
 
+// The state each of these leaves behind is provisional: loop() replaces it with the
+// speaker below as soon as that speaker settles. Reading the speaker here as well
+// just avoids reporting a transition that already finished.
 void LevelMeterSpeaker::start() {
-  this->output_speaker_->set_audio_stream_info(this->audio_stream_info_);
+  this->forward_stream_info_();
   this->output_speaker_->start();
-  this->state_ = speaker::STATE_RUNNING;
+  this->state_ = this->output_speaker_->is_running() ? speaker::STATE_RUNNING : speaker::STATE_STARTING;
 }
 
 void LevelMeterSpeaker::stop() {
   this->output_speaker_->stop();
-  this->state_ = speaker::STATE_STOPPED;
+  this->state_ = this->output_speaker_->is_stopped() ? speaker::STATE_STOPPED : speaker::STATE_STOPPING;
 }
 
 void LevelMeterSpeaker::finish() {
   this->output_speaker_->finish();
-  this->state_ = speaker::STATE_STOPPED;
+  this->state_ = this->output_speaker_->is_stopped() ? speaker::STATE_STOPPED : speaker::STATE_STOPPING;
 }
 
 void LevelMeterSpeaker::set_mute_state(bool mute_state) {
